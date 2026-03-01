@@ -110,7 +110,7 @@ def validate_prompt_bank(records: Sequence[PromptRecord]) -> None:
 
 def prompt_bank_digest(records: Sequence[PromptRecord]) -> str:
     canonical_records = [
-        record.to_dict() for record in sorted(records, key=lambda item: item.prompt_id)
+        record.model_dump() for record in sorted(records, key=lambda item: item.prompt_id)
     ]
     payload = json.dumps(canonical_records, sort_keys=True, separators=(",", ":"))
     return sha256(payload.encode("utf-8")).hexdigest()

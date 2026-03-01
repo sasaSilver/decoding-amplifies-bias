@@ -11,7 +11,7 @@ def build_cache_payload(config: GenerationConfig, prompt_bank_digest: str) -> di
     return {
         "model_name": config.model_name,
         "prompt_bank_digest": prompt_bank_digest,
-        "decoding": config.decoding.to_dict(),
+        "decoding": config.decoding.model_dump(),
         "max_new_tokens": config.max_new_tokens,
         "n_samples_per_prompt": config.n_samples_per_prompt,
         "seeds": list(config.seeds),

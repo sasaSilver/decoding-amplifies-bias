@@ -117,7 +117,7 @@ def _build_manifest(
         "seeds": list(config.seeds),
         "max_new_tokens": config.max_new_tokens,
         "n_samples_per_prompt": config.n_samples_per_prompt,
-        "decoding": config.decoding.to_dict(),
+        "decoding": config.decoding.model_dump(),
         "cache_payload": build_cache_payload(config, prompt_bank_digest_value),
         "environment": environment,
         "record_count": record_count,
@@ -188,7 +188,7 @@ class GenerationRunner:
                         raw_text=generated.raw_text,
                         completion_text=generated.completion_text,
                     )
-                    records.append(record.to_dict())
+                    records.append(record.model_dump())
 
         frame = pd.DataFrame.from_records(records)
         artifact_paths.generations_path.parent.mkdir(parents=True, exist_ok=True)
