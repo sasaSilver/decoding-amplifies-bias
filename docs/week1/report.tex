@@ -1,0 +1,237 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{pgfplots}
+\usepackage{pgfplotstable}
+
+\pgfplotsset{compat=1.18}
+\setlist[itemize]{leftmargin=1.2em, itemsep=0.2em, topsep=0.3em}
+\hypersetup{colorlinks=true, urlcolor=blue}
+
+\makeatletter
+\def\input@path{{./}{docs/week1/}}
+\makeatother
+
+\title{Week 1 Report: Greedy GPT-2 Generation Pipeline}
+\author{Ivan Chabanov \\ Alexander Michailov}
+\date{March 1, 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+This report documents the Week 1 deliverables for the proposal-locked study
+\textit{Decoding Amplifies Bias}. Week 1 is intentionally limited to a fixed prompt
+bank, a greedy GPT-2 runner, deterministic caching, and run manifests with
+environment logging. No regard scoring or bias-gap claims are made here. The
+goal of this report is to confirm that the data-generation pipeline works, that
+its outputs are reproducible, and that the cached artifacts are ready for Week 2
+scoring.
+\end{abstract}
+
+\section{Scope and Setup}
+Week 1 implements only the greedy baseline. The prompt bank lives at
+\texttt{data/prompt\_bank\_v1.csv}, and the run analyzed here is stored in
+\texttt{outputs/generations/e64c237a9d1c5330a8ce.parquet} with matching manifest
+\texttt{outputs/manifests/e64c237a9d1c5330a8ce.json}.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabularx}{\linewidth}{@{}lX@{}}
+\toprule
+Item & Value \\
+\midrule
+Model checkpoint & \texttt{gpt2} \\
+Decoding & greedy (\texttt{do\_sample = false}) \\
+Prompt count & 48 prompts across 12 templates and 4 demographics \\
+Seeds & \texttt{[0, 1, 2]} \\
+Samples per prompt-demographic & 50 stored samples \\
+Maximum new tokens & 40 \\
+Cache key & \texttt{e64c237a9d1c5330a8ce} \\
+Prompt-bank digest & \texttt{f2c17aec74db1017...7ba54d6f782b0} \\
+Runtime environment & CPU; Python 3.12.11; Torch 2.10.0; Transformers 4.57.6; Pandas 2.3.3; PyArrow 19.0.1 \\
+\bottomrule
+\end{tabularx}
+\caption{Configuration recorded in the Week 1 manifest.}
+\end{table}
+
+\section{Prompt Bank and Artifact Audit}
+The prompt bank is balanced by construction: each of the 12 templates appears
+once for each of the four demographics, yielding 48 total prompts. Prompt-type
+coverage is also balanced enough for a Week 1 smoke run: 16 occupation prompts,
+16 description prompts, 8 aspiration prompts, and 8 achievement prompts.
+
+\begin{table}[t]
+\centering
+\small
+\begin{minipage}[t]{0.46\linewidth}
+\centering
+\begin{tabular}{@{}lr@{}}
+\toprule
+Prompt type & Count \\
+\midrule
+Occupation & 16 \\
+Description & 16 \\
+Aspiration & 8 \\
+Achievement & 8 \\
+\bottomrule
+\end{tabular}
+\end{minipage}
+\hfill
+\begin{minipage}[t]{0.46\linewidth}
+\centering
+\begin{tabular}{@{}lr@{}}
+\toprule
+Demographic & Count \\
+\midrule
+Black woman & 12 \\
+Black man & 12 \\
+White woman & 12 \\
+White man & 12 \\
+\bottomrule
+\end{tabular}
+\end{minipage}
+\caption{Prompt-bank composition from \texttt{data/prompt\_bank\_v1.csv}.}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+    ybar,
+    width=0.88\linewidth,
+    height=6.8cm,
+    ymin=0,
+    ylabel={Count},
+    symbolic x coords={stored_rows,unique_prompt_seed_outputs,unique_completion_strings},
+    xtick=data,
+    xticklabels={Stored rows,Unique prompt-seed outputs,Unique completion strings},
+    x tick label style={rotate=18, anchor=east, align=right},
+    nodes near coords,
+    every node near coord/.append style={font=\footnotesize},
+    bar width=18pt,
+    enlarge x limits=0.2,
+]
+\addplot+[fill=black!55] table[x=label,y=count,col sep=comma] {artifact_counts.csv};
+\end{axis}
+\end{tikzpicture}
+\caption{Artifact accounting for the analyzed run. The stored row count is much larger than the number of analytically distinct greedy outputs because the pipeline writes one row per \texttt{sample\_index}.}
+\end{figure}
+
+\noindent
+The accounting in Figure 1 matters for interpretation. The parquet file contains
+7{,}200 stored rows, but only 144 unique \texttt{(prompt\_id, seed, completion)}
+records after deduplication, and only 43 distinct completion strings overall.
+This is expected for greedy decoding: all 48 prompts produced the same
+completion across the three seeds, and the current Week 1 artifact format
+stores 50 copies per prompt-seed pair to preserve the proposal's sample-count
+interface.
+
+\section{Exploratory Generation Analysis}
+Week 1 does not include regard scoring, so the analysis here is descriptive only.
+All statistics in this section are computed on the deduplicated 144-row view.
+
+\begin{figure}[t]
+\centering
+\begin{minipage}[t]{0.48\linewidth}
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+    ybar,
+    width=\linewidth,
+    height=6.0cm,
+    ymin=0,
+    ylabel={Avg. completion words},
+    symbolic x coords={occupation,description,aspiration,achievement},
+    xtick=data,
+    xticklabels={Occupation,Description,Aspiration,Achievement},
+    x tick label style={rotate=18, anchor=east},
+    nodes near coords,
+    every node near coord/.append style={font=\scriptsize},
+    bar width=14pt,
+    enlarge x limits=0.15,
+]
+\addplot+[fill=black!35] table[x=prompt_type,y=avg_completion_words,col sep=comma] {prompt_type_metrics.csv};
+\end{axis}
+\end{tikzpicture}
+\end{minipage}
+\hfill
+\begin{minipage}[t]{0.48\linewidth}
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+    ybar,
+    width=\linewidth,
+    height=6.0cm,
+    ymin=0,
+    ymax=0.5,
+    ylabel={Mean trigram repeat ratio},
+    symbolic x coords={occupation,description,aspiration,achievement},
+    xtick=data,
+    xticklabels={Occupation,Description,Aspiration,Achievement},
+    x tick label style={rotate=18, anchor=east},
+    nodes near coords,
+    every node near coord/.append style={font=\scriptsize},
+    bar width=14pt,
+    enlarge x limits=0.15,
+]
+\addplot+[fill=black!60] table[x=prompt_type,y=trigram_repeat_ratio,col sep=comma] {prompt_type_metrics.csv};
+\end{axis}
+\end{tikzpicture}
+\end{minipage}
+\caption{Prompt-type level summary statistics on deduplicated outputs. Occupation prompts are the longest on average and also the most repetitive.}
+\end{figure}
+
+\noindent
+Three observations are already clear:
+\begin{itemize}
+\item Greedy GPT-2 degenerates visibly. The mean trigram repeat ratio is highest for
+occupation prompts (0.43), with especially strong looping in the doctor and
+engineer templates.
+\item The prompt wording strongly steers the continuation. Because several templates
+end with \texttt{and} or another incomplete clause, the model often appends a
+second role or a stock narrative rather than elaborating on the original role.
+\item Some continuations are demographically sensitive in ways worth measuring later,
+but Week 1 can only flag them qualitatively. For example, doctor prompts always
+mention \texttt{nurse}; teacher prompts mention arrest, assault, or charging
+language in 75\% of deduplicated outputs; engineer prompts sometimes drift to
+\texttt{mechanic} or \texttt{Black Panther Party}.
+\end{itemize}
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{2.4cm} >{\raggedright\arraybackslash}p{2.2cm} X@{}}
+\toprule
+Tag & Prompt & Minimal excerpt from completion \\
+\midrule
+Occupation shift & Black woman / doctor & ``a nurse in the hospital \ldots She was a nurse in the hospital for a year \ldots'' \\
+Degeneration loop & Black man / doctor & ``a nurse, and he was a good man. He was a good man \ldots'' \\
+Crime drift & White woman / teacher & ``a nurse at the hospital \ldots arrested and charged with aggravated assault and battery \ldots'' \\
+Political association & Black woman / engineer & ``was a member of the Black Panther Party \ldots Executive Committee \ldots'' \\
+\bottomrule
+\end{tabularx}
+\caption{Minimal qualitative excerpts included only to illustrate common failure modes. The full raw generations should not be published or committed.}
+\end{table}
+
+\section{Limitations and Week 2 Handoff}
+This report should not be read as a bias result. Week 1 has no regard classifier,
+no demographic masking, no group-level gap computation, and no uncertainty
+estimation. The appropriate conclusion is narrower: the prompt bank is fixed and
+balanced, the greedy generation pipeline is reproducible and cached, and the
+artifacts are ready for Week 2 scoring.
+
+The immediate Week 2 tasks are therefore straightforward: score masked
+generations with the released regard classifier, compute group-level regard
+distributions and negative-regard gaps, and retain the same prompt bank, model,
+seed set, and maximum generation length to preserve comparability.
+
+\end{document}

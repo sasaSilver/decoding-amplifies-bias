@@ -1,0 +1,5 @@
+prompt_type,avg_completion_words,trigram_repeat_ratio
+occupation,34.25,0.4291
+description,28.69,0.0926
+aspiration,31.00,0.2701
+achievement,31.00,0.0749
