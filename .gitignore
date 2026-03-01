@@ -1,0 +1,46 @@
+# --- Python bytecode / caches ---
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+
+# --- Virtualenvs ---
+.venv/
+venv/
+env/
+
+# --- Env files / secrets ---
+.env
+.env.*
+
+# --- Tooling caches ---
+.ruff_cache/
+.pytest_cache/
+.mypy_cache/
+.pyright/
+.coverage
+htmlcov/
+.tox/
+
+# --- Jupyter ---
+.ipynb_checkpoints/
+
+# --- Project outputs / artifacts ---
+outputs/
+*.parquet
+*.arrow
+*.feather
+*.pt
+*.bin
+*.safetensors
+
+# Optional: local model/data caches if you ever put them inside repo
+.cache/
+cache/
+models/
+checkpoints/
+
+# --- OS ---
+.DS_Store
+Thumbs.db
