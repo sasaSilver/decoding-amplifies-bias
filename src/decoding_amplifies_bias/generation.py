@@ -32,7 +32,7 @@ class GreedyGenerationBackend(Protocol):
         ...
 
 
-class GPT2GreedyBackend():
+class GPT2GreedyBackend:
     def __init__(self, model_name: str = "gpt2", device: str | None = None) -> None:
         import torch
         from transformers import AutoModelForCausalLM, AutoTokenizer, set_seed
