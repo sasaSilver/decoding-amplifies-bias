@@ -2,8 +2,8 @@ from unittest.mock import MagicMock, create_autospec
 
 import pytest
 
-from src.app.generation import GenerationRunner, GreedyGenerationBackend
-from src.app.models import GeneratedText
+from app.generation import GenerationRunner, GreedyGenerationBackend
+from app.models import GeneratedText
 
 
 @pytest.fixture

@@ -1,6 +1,6 @@
-PY := python
-RUFF := ruff
-PYTEST := pytest
+PY := .venv/bin/python
+RUFF := .venv/bin/ruff
+PYTEST := .venv/bin/pytest
 
 .PHONY: help fmt lint lint-fix test check
 
@@ -27,4 +27,4 @@ test:
 check: fmt lint test
 
 run:
-	uv run run
+	PYTHONPATH=src $(PY) -m app.cli

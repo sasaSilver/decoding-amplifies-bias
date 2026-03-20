@@ -4,8 +4,8 @@ from typing import Literal
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from src.app.settings.generation import DecodingConfig, GenerationConfig
-from src.app.settings.scoring import ScoringConfig
+from .generation import DecodingConfig, GenerationConfig
+from .scoring import ScoringConfig
 
 
 class Settings(BaseSettings):

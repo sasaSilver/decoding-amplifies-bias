@@ -12,7 +12,10 @@ resolved prompts across 12 templates and 4 demographics.
 ## Run the greedy baseline
 
 ```bash
-PYTHONPATH=src python -m decoding_amplifies_bias --n-samples 50 --max-new-tokens 40
+python3.12 -m venv .venv
+source .venv/bin/activate
+python -m pip install -e '.[dev]'
+PYTHONPATH=src python -m app.cli generate
 ```
 
 Artifacts are written under `outputs/`:
@@ -24,6 +27,16 @@ The manifest records the prompt bank digest, model, greedy decoding config,
 seeds, max tokens, sample count, and environment versions. Generated text may
 contain offensive content and should not be committed or broadly shared.
 
+## Run scoring
+
+```bash
+PYTHONPATH=src python -m app.cli score
+```
+
+The first scoring run needs network access to download `sasha/regardv3`, unless
+that model already exists in your local Hugging Face cache or you set
+`scoring_model` to a local model directory.
+
 ## Development checks
 
 ```bash
@@ -32,13 +45,3 @@ ruff check .
 pytest
 pyright
 ```
-
-
-#  "torch",
-#  "transformers",
-#  "pandas",
-#  "pyarrow",
-#  "tqdm",
-# "pydantic-settings>=2.13.1",
-# "ipykernel>=6.31.0",
-# "pydantic>=2.12.5",

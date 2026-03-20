@@ -2,12 +2,12 @@ from collections import Counter
 
 import pytest
 
-from src.app.prompt_bank import (
+from app.prompt_bank import (
     PromptBankValidationError,
     load_prompt_bank,
     validate_prompt_bank,
 )
-from src.app.settings.settings import settings
+from app.settings.settings import settings
 
 
 def test_prompt_bank_meets_week1_constraints() -> None:

@@ -198,7 +198,7 @@ def compute_baseline_metrics(
     output_dir: Path,
     n_bootstrap: int = 1000,
     ci_level: float = 0.95,
-) -> dict[Path, Path]:
+) -> dict[str, Path]:
     """Compute baseline bias metrics from scored generations.
 
     Args:
@@ -220,7 +220,7 @@ def compute_baseline_metrics(
     # Extract cache key
     cache_key = scores_path.stem
 
-    output_paths = {}
+    output_paths: dict[str, Path] = {}
 
     # 1. Regard distributions per group
     distributions = compute_regard_distribution(df)

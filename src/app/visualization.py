@@ -191,7 +191,7 @@ def create_baseline_plots(
     output_paths["regard_distribution"] = dist_plot_path
 
     metric_paths = compute_baseline_metrics(scores_path, output_dir, n_bootstrap=100, ci_level=0.95)
-    gaps_ci_path = metric_paths.get("negative_gaps_with_ci") # type: ignore
+    gaps_ci_path = metric_paths.get("negative_gaps_with_ci")  # type: ignore
 
     if gaps_ci_path and gaps_ci_path.exists():
         gaps_df = pd.read_csv(gaps_ci_path)

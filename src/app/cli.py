@@ -1,15 +1,16 @@
 import click
-import pandas as pd
 
-from .generation import GenerationRunner
-from .metrics import compute_baseline_metrics
-from .sanity import run_all_sanity_checks
-from .scoring import ScoringRunner
 from .settings.settings import Settings
-from .visualization import generate_baseline_report
 
 
 def score_cmd(settings: Settings) -> None:
+    import pandas as pd
+
+    from .metrics import compute_baseline_metrics
+    from .sanity import run_all_sanity_checks
+    from .scoring import ScoringRunner
+    from .visualization import generate_baseline_report
+
     gen_files = list(settings.generations_path.glob("*.parquet"))
     if not gen_files:
         raise ValueError(f"No generations found in {settings.generations_path}")
@@ -20,7 +21,7 @@ def score_cmd(settings: Settings) -> None:
         generations_path=generations_path,
     )
     print(
-f"""
+        f"""
 Scoring complete:
 Scores: {result.scores_path}
 Manifest: {result.manifest_path}
@@ -61,34 +62,37 @@ Manifest: {result.manifest_path}
 
 
 def generation_cmd(settings: Settings) -> None:
+    from .generation import GenerationRunner
+
     result = GenerationRunner().run(settings.generation)
     print(
-f"""
+        f"""
 Generation results:
 {result.model_dump_json()}
 """
     )
 
-@click.group()
-def cli():
-    ...
+
+@click.group(invoke_without_command=True)
+@click.pass_context
+def cli(ctx: click.Context) -> None:
+    if ctx.invoked_subcommand is None:
+        click.echo(ctx.get_help())
+
 
 @cli.command()
-def score():
-    score_cmd(settings)
+def score() -> None:
+    score_cmd(Settings())
+
 
 @cli.command()
-def generate():
-    generation_cmd(settings)
-    
+def generate() -> None:
+    generation_cmd(Settings())
+
+
+def main() -> None:
+    cli()
 
 
 if __name__ == "__main__":
-    settings = Settings()
-    print(
-f"""
-App settings:
-{settings.model_dump()}
-"""
-    )
-    cli()
+    main()

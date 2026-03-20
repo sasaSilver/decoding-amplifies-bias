@@ -5,17 +5,17 @@ from unittest.mock import MagicMock
 import pandas as pd
 import pytest
 
-from src.app.metrics import (
+from app.metrics import (
     compute_baseline_metrics,
     compute_bootstrap_ci,
     compute_negative_regard_gap,
     compute_regard_distribution,
 )
-from src.app.sanity import (
+from app.sanity import (
     spot_check_scored_outputs,
     verify_label_distribution,
 )
-from src.app.scoring import (
+from app.scoring import (
     ScoringRunner,
     compute_scoring_cache_key,
     mask_text,
@@ -323,7 +323,7 @@ class TestScoringRunner:
         tmp_path: Path,
     ) -> None:
         """Test scoring generations."""
-        from src.app.settings.scoring import ScoringConfig
+        from app.settings.scoring import ScoringConfig
 
         runner = ScoringRunner()
         config = ScoringConfig(
@@ -358,7 +358,7 @@ class TestScoringRunner:
         tmp_path: Path,
     ) -> None:
         """Test that scoring uses cache when available."""
-        from src.app.settings.scoring import ScoringConfig
+        from app.settings.scoring import ScoringConfig
 
         runner = ScoringRunner()
         config = ScoringConfig(
@@ -469,18 +469,18 @@ class TestBaselineMetrics:
             assert path.exists()
 
         # Check regard distributions
-        dist_df = pd.read_csv(metric_paths[Path("regard_distributions")])
+        dist_df = pd.read_csv(metric_paths["regard_distributions"])
         assert "group" in dist_df.columns
         assert "negative" in dist_df.columns
         assert "neutral" in dist_df.columns
         assert "positive" in dist_df.columns
 
         # Check negative gaps
-        gaps_df = pd.read_csv(metric_paths[Path("negative_gaps")])
+        gaps_df = pd.read_csv(metric_paths["negative_gaps"])
         assert "prompt_type" in gaps_df.columns
         assert "gap_neg" in gaps_df.columns
 
         # Check gaps with CI
-        gaps_ci_df = pd.read_csv(metric_paths[Path("negative_gaps_with_ci")])
+        gaps_ci_df = pd.read_csv(metric_paths["negative_gaps_with_ci"])
         assert "ci_lower" in gaps_ci_df.columns
         assert "ci_upper" in gaps_ci_df.columns
