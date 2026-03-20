@@ -1,0 +1,136 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{pgfplots}
+\usepackage{pgfplotstable}
+
+\pgfplotsset{compat=1.18}
+\setlist[itemize]{leftmargin=1.2em, itemsep=0.2em, topsep=0.3em}
+\hypersetup{colorlinks=true, urlcolor=blue}
+
+\makeatletter
+\def\input@path{{./}{docs/week2/}}
+\makeatother
+
+\title{Week 2 Report: Regard Scoring and Baseline Bias Gaps}
+
+\author{Ivan Chabanov \\ Alexander Michailov}
+\date{March 8, 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+    This report documents Week 2 deliverables: regard classifier integration,
+    demographic masking (XYZ replacement), baseline regard distributions,
+    negative-regard gaps per prompt type, and sanity checks. The analysis builds
+    on Week 1 greedy generation artifacts.
+\end{abstract}
+
+\begin{center}
+\small
+\url{https://github.com/ChabanovX/decoding-amplifies-bias}
+\end{center}
+
+\vspace{8px}
+
+\section{Setup}
+Week 2 adds regard scoring to the Week 1 greedy baseline using the
+\texttt{sasha/regardv3} classifier with demographic masking enabled.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabularx}{\linewidth}{@{}lX@{}}
+\toprule
+Item & Value \\
+\midrule
+Generations source & \texttt{outputs/generations/e64c237a9d1c5330a8ce.parquet} \\
+Regard classifier & \texttt{sasha/regardv3} \\
+Demographic masking & enabled (XYZ replacement) \\
+Label set & \{negative, neutral, positive, other\} \\
+Bootstrap samples & 1000 \\
+Confidence level & 95\% \\
+\bottomrule
+\end{tabularx}
+\caption{Week 2 configuration.}
+\end{table}
+
+\section{Implementation}
+
+\subsection{Regard Classifier}
+The \texttt{NLGBiasClassifier} in \texttt{src/app/scoring.py} loads the
+\texttt{sasha/regardv3} model, handles device placement, and provides batch
+prediction with four output labels (negative, neutral, positive, other).
+
+\subsection{Demographic Masking}
+The \texttt{mask\_text()} function replaces all case variants of demographic
+terms with ``XYZ'' before scoring, isolating content-based bias from explicit
+demographic mentions.
+
+\subsection{Baseline Metrics}
+\begin{itemize}
+\item \texttt{compute\_regard\_distribution()}: Regard proportions per demographic
+\item \texttt{compute\_negative\_regard\_gap()}: $\Delta_{\text{neg}} = P(\text{neg}|A) - P(\text{neg}|B)$ per prompt type
+\item \texttt{compute\_bootstrap\_ci\_for\_gap()}: 95\% bootstrap CIs for gaps
+\end{itemize}
+
+\subsection{Sanity Checks}
+\begin{itemize}
+\item Label distribution verification (all labels present, sufficient samples)
+\item Empty and short completion checks
+\item Spot-check samples (20 outputs balanced across labels)
+\end{itemize}
+
+\section{Results}
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabularx}{\linewidth}{@{}lcccc@{}}
+\toprule
+Demographic & Negative & Neutral & Positive & Other \\
+\midrule
+Black woman & [value] & [value] & [value] & [value] \\
+Black man & [value] & [value] & [value] & [value] \\
+White woman & [value] & [value] & [value] & [value] \\
+White man & [value] & [value] & [value] & [value] \\
+\bottomrule
+\end{tabularx}
+\caption{Regard distribution by demographic.}
+\end{table}
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabularx}{\linewidth}{@{}lcccc@{}}
+\toprule
+Prompt type & Group A & Group B & $\Delta_{\text{neg}}$ & 95\% CI \\
+\midrule
+occupation & Black woman & White woman & [value] & ([value], [value]) \\
+occupation & Black man & White man & [value] & ([value], [value]) \\
+description & Black woman & White woman & [value] & ([value], [value]) \\
+description & Black man & White man & [value] & ([value], [value]) \\
+aspiration & Black woman & White woman & [value] & ([value], [value]) \\
+aspiration & Black man & White man & [value] & ([value], [value]) \\
+achievement & Black woman & White woman & [value] & ([value], [value]) \\
+achievement & Black man & White man & [value] & ([value], [value]) \\
+\bottomrule
+\end{tabularx}
+\caption{Negative-regard gaps with 95\% bootstrap confidence intervals.}
+\end{table}
+
+\section{Week 3 Handoff}
+Week 3 will run the decoding grid (temperature $\{0.7, 1.0, 1.3\}$, top-k $\{20, 50, 100\}$,
+top-p $\{0.8, 0.9, 0.95\}$) and compute bias/quality metrics with bootstrap CIs for each
+configuration.
+
+\end{document}

@@ -24,10 +24,10 @@
 
 **License / usage rights.**
 - GPT-2 and BERT: use released checkpoints under their published licenses/terms (cite in References).
-- `nlg-bias` repo: if no explicit license is present, treat as research artifact: use with attribution; do not redistribute beyond class submission.
+- `sasha/regardv3` repo: if no explicit license is present, treat as research artifact: use with attribution; do not redistribute beyond class submission.
 
 **Preprocessing steps.**
-- Mask demographics for scoring: replace demographic mention with `XYZ` before running regard classifier (standard in `nlg-bias` workflow).
+- Mask demographics for scoring: replace demographic mention with `XYZ` before running regard classifier (standard in `sasha/regardv3` workflow).
 - Tokenize with BERT tokenizer; max length 128 (truncate/pad).
 - Generation: fixed max new tokens; filter empty outputs; log prompts, seeds, and decoding config.
 
@@ -36,7 +36,7 @@
 **Baseline (first implementation).**
 - Generator: pretrained GPT-2 small (no fine-tuning).
 - Decoding: greedy decoding only.
-- Bias scoring: use released regard classifier from `nlg-bias` to label generations and compute group-level bias.
+- Bias scoring: use released regard classifier from `sasha/regardv3` to label generations and compute group-level bias.
 
 **Core extension (main contribution).**
 - Decoding sweep: temperature/top-k/top-p (+ optional anti-repetition) and measure how regard gaps shift.
