@@ -6,8 +6,9 @@ from pathlib import Path
 
 import pandas as pd
 import torch
-from transformers import AutoModelForSequenceClassification, AutoTokenizer
+from transformers import AutoConfig, AutoModelForSequenceClassification, AutoTokenizer
 
+from .device import resolve_torch_device
 from .models import ScoringArtifactPaths, ScoringRunResult
 from .settings.scoring import ScoringConfig
 
@@ -23,6 +24,39 @@ class RegardLabelEnum(StrEnum):
         return list(cls)
 
 
+class ScoringModelLoadError(RuntimeError):
+    """Raised when the regard classifier cannot be loaded safely."""
+
+
+def _build_model_load_error_message(
+    model_reference: str,
+    local_files_only: bool,
+    low_cpu_mem_usage: bool,
+    exc: BaseException,
+) -> str:
+    message = [f"Failed to load scoring model '{model_reference}'."]
+    if local_files_only:
+        message.append(
+            "local_files_only=True, so the model must already exist in a local directory or cache."
+        )
+
+    error_text = str(exc)
+    if low_cpu_mem_usage and "accelerate" in error_text.lower():
+        message.append(
+            "low_cpu_mem_usage=True requires `accelerate`. Install it or set "
+            "`scoring_low_cpu_mem_usage=false`."
+        )
+    if "not enough memory" in error_text.lower() or "allocate" in error_text.lower():
+        message.append(
+            "The selected scoring model does not fit into available memory. "
+            "Try `low_cpu_mem_usage=True`, a smaller classifier, or point "
+            "scoring_model_path to a lighter local checkpoint."
+        )
+
+    message.append(f"Original error: {error_text}")
+    return " ".join(message)
+
+
 class NLGBiasClassifier:
     LABEL_MAP = {
         0: RegardLabelEnum.NEGATIVE,
@@ -34,16 +68,66 @@ class NLGBiasClassifier:
     def __init__(
         self,
         model_name: str = "sasha/regardv3",
+        local_files_only: bool = False,
+        low_cpu_mem_usage: bool = True,
+        batch_size: int = 32,
         device: str | None = None,
     ) -> None:
-        resolved_device = device or ("cuda" if torch.cuda.is_available() else "cpu")
-        tokenizer = AutoTokenizer.from_pretrained(model_name)
-        model = AutoModelForSequenceClassification.from_pretrained(model_name)
+        try:
+            resolved_device = resolve_torch_device(device)
+        except ValueError as exc:
+            raise ScoringModelLoadError(str(exc)) from exc
+
+        load_kwargs = {
+            "local_files_only": local_files_only,
+            "low_cpu_mem_usage": low_cpu_mem_usage,
+        }
+        if local_files_only:
+            load_kwargs["use_safetensors"] = False
+        try:
+            config = AutoConfig.from_pretrained(model_name, local_files_only=local_files_only)
+        except (ImportError, MemoryError, OSError, RuntimeError) as exc:
+            raise ScoringModelLoadError(
+                _build_model_load_error_message(
+                    model_name,
+                    local_files_only,
+                    low_cpu_mem_usage,
+                    exc,
+                )
+            ) from exc
+
+        num_labels = getattr(config, "num_labels", None)
+        if num_labels != len(self.LABEL_MAP):
+            raise ScoringModelLoadError(
+                f"Scoring model '{model_name}' reports num_labels={num_labels}, "
+                f"expected {len(self.LABEL_MAP)}."
+            )
+
+        try:
+            tokenizer = AutoTokenizer.from_pretrained(
+                model_name,
+                local_files_only=local_files_only,
+            )
+            model = AutoModelForSequenceClassification.from_pretrained(
+                model_name,
+                **load_kwargs,
+            )
+        except (ImportError, MemoryError, OSError, RuntimeError) as exc:
+            raise ScoringModelLoadError(
+                _build_model_load_error_message(
+                    model_name,
+                    local_files_only,
+                    low_cpu_mem_usage,
+                    exc,
+                )
+            ) from exc
+
         model.to(resolved_device)
         model.eval()
 
         self.model_name = model_name
         self.device = resolved_device
+        self.batch_size = batch_size
         self._model = model
         self._tokenizer = tokenizer
         self._torch = torch
@@ -55,21 +139,27 @@ class NLGBiasClassifier:
         if not texts:
             return []
 
-        encoded = self._tokenizer(
-            texts,
-            padding=True,
-            truncation=True,
-            max_length=128,
-            return_tensors="pt",
-        )
-        encoded = {key: value.to(self.device) for key, value in encoded.items()}
+        predicted_labels: list[str] = []
 
-        with self._torch.no_grad():
-            outputs = self._model(**encoded)
-            logits = outputs.logits
-            predictions = self._torch.argmax(logits, dim=-1)
+        for start_index in range(0, len(texts), self.batch_size):
+            batch = texts[start_index : start_index + self.batch_size]
+            encoded = self._tokenizer(
+                batch,
+                padding=True,
+                truncation=True,
+                max_length=128,
+                return_tensors="pt",
+            )
+            encoded = {key: value.to(self.device) for key, value in encoded.items()}
 
-        return [self.LABEL_MAP[int(pred)] for pred in predictions]
+            with self._torch.no_grad():
+                outputs = self._model(**encoded)
+                logits = outputs.logits
+                predictions = self._torch.argmax(logits, dim=-1)
+
+            predicted_labels.extend(self.LABEL_MAP[int(pred)] for pred in predictions)
+
+        return predicted_labels
 
 
 def mask_text(text: str, to_mask: str) -> str:
@@ -86,10 +176,12 @@ def mask_text(text: str, to_mask: str) -> str:
 
 def compute_scoring_cache_key(
     generations_cache_key: str,
+    model_reference: str,
     use_masking: bool,
 ) -> str:
     payload = {
         "generations_cache_key": generations_cache_key,
+        "model_reference": model_reference,
         "use_masking": use_masking,
     }
     serialized = json.dumps(payload, sort_keys=True, separators=(",", ":"))
@@ -128,7 +220,12 @@ def _build_manifest(
         "created_at_utc": datetime.now(UTC).isoformat(),
         "generations_cache_key": generations_cache_key,
         "generations_path": str(generations_path.resolve()),
+        "model_name": config.model_name,
+        "model_reference": config.resolved_model_reference(),
         "use_masking": use_masking,
+        "local_files_only": config.local_files_only,
+        "low_cpu_mem_usage": config.low_cpu_mem_usage,
+        "batch_size": config.batch_size,
         "environment": environment,
         "record_count": record_count,
         "artifacts": {
@@ -150,9 +247,11 @@ class ScoringRunner:
         generations_df = pd.read_parquet(generations_path)
 
         generations_cache_key = generations_path.stem
+        model_reference = config.resolved_model_reference()
 
         scoring_cache_key = compute_scoring_cache_key(
             generations_cache_key=generations_cache_key,
+            model_reference=model_reference,
             use_masking=config.use_masking,
         )
 
@@ -168,11 +267,14 @@ class ScoringRunner:
             )
 
         active_backend = backend or NLGBiasClassifier(
-            model_name=config.model_name,
+            model_name=model_reference,
+            local_files_only=config.local_files_only,
+            low_cpu_mem_usage=config.low_cpu_mem_usage,
+            batch_size=config.batch_size,
             device=config.device,
         )
-        if active_backend.model_name != config.model_name:
-            raise ValueError("Backend model_name must match ScoringConfig.model_name.")
+        if active_backend.model_name != model_reference:
+            raise ValueError("Backend model_name must match the resolved scoring model reference.")
 
         texts_to_score = []
         for _, row in generations_df.iterrows():

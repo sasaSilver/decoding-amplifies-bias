@@ -150,7 +150,7 @@ def run_all_sanity_checks(
     }
 
     dist_check = verify_label_distribution(df)
-    results["checks"].append(dist_check)
+    results["checks"].append(dist_check.model_dump())
 
     spot_samples = spot_check_scored_outputs(df, n_samples=n_spot_check_samples)
     results["spot_check_samples"] = spot_samples

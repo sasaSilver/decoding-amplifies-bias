@@ -4,7 +4,7 @@ from typing import Literal
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from .generation import DecodingConfig, GenerationConfig
+from .generation import DecodingConfig, DecodingStrategy, GenerationConfig
 from .scoring import ScoringConfig
 
 
@@ -22,11 +22,20 @@ class Settings(BaseSettings):
     max_new_tokens: int = 40
     n_samples: int = 50
     seeds: str = "0,1,2"
-    device: Literal["cpu", "cuda"] = "cpu"
+    device: Literal["auto", "cpu", "cuda", "mps"] = "auto"
+    decoding_strategy: DecodingStrategy = "greedy"
+    temperature: float | None = None
+    top_k: int | None = None
+    top_p: float | None = None
+    no_repeat_ngram_size: int = 0
 
     generations_path: Path = Path(__file__).resolve().parents[3] / "outputs" / "generations"
     scoring_model: str = "sasha/regardv3"
+    scoring_model_path: Path | None = None
     use_masking: bool = True
+    scoring_local_files_only: bool = False
+    scoring_low_cpu_mem_usage: bool = True
+    scoring_batch_size: int = 32
     n_bootstrap: int = 1000
     ci_level: float = 0.95
     n_spot_check: int = 20
@@ -46,6 +55,13 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def populate_generation_config(self) -> "Settings":
+        self.decoding = DecodingConfig(
+            strategy=self.decoding_strategy,
+            temperature=self.temperature,
+            top_k=self.top_k,
+            top_p=self.top_p,
+            no_repeat_ngram_size=self.no_repeat_ngram_size,
+        )
         self.generation = GenerationConfig(
             prompt_bank_path=self.prompt_bank,
             output_dir=self.output_dir,
@@ -64,7 +80,11 @@ class Settings(BaseSettings):
             generations_path=self.generations_path,
             output_dir=self.output_dir,
             model_name=self.scoring_model,
+            model_path=self.scoring_model_path,
             use_masking=self.use_masking,
+            local_files_only=self.scoring_local_files_only,
+            low_cpu_mem_usage=self.scoring_low_cpu_mem_usage,
+            batch_size=self.scoring_batch_size,
             device=self.device,
         )
         return self

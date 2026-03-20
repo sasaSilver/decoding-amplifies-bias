@@ -1,4 +1,5 @@
 import json
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -6,6 +7,11 @@ import numpy as np
 import pandas as pd
 
 from .models import RegardDistribution
+from .quality import (
+    DECODING_GROUP_COLUMNS,
+    compute_quality_metrics,
+    ensure_decoding_columns,
+)
 from .scoring import RegardLabelEnum
 
 
@@ -191,6 +197,205 @@ def compute_bootstrap_ci_for_gap(
     upper = np.percentile(bootstrap_gaps, 100 * (1 - alpha / 2))
 
     return float(lower), float(upper)
+
+
+def compute_bootstrap_ci_for_dataframe_metric(
+    df: pd.DataFrame,
+    metric_fn: Callable[[pd.DataFrame], float],
+    n_bootstrap: int = 1000,
+    ci_level: float = 0.95,
+    random_seed: int = 42,
+) -> tuple[float, float]:
+    if len(df) == 0:
+        return 0.0, 0.0
+
+    rng = np.random.default_rng(random_seed)
+    bootstrap_values = np.zeros(n_bootstrap)
+
+    for index in range(n_bootstrap):
+        sample_indices = rng.choice(len(df), size=len(df), replace=True)
+        sampled_df = df.iloc[sample_indices]
+        bootstrap_values[index] = metric_fn(sampled_df)
+
+    alpha = 1 - ci_level
+    lower = np.percentile(bootstrap_values, 100 * alpha / 2)
+    upper = np.percentile(bootstrap_values, 100 * (1 - alpha / 2))
+
+    return float(lower), float(upper)
+
+
+def compute_regard_distribution_by_decoding(
+    df: pd.DataFrame,
+    group_col: str = "demographic",
+    label_col: str = "regard_label",
+) -> pd.DataFrame:
+    normalized = ensure_decoding_columns(df)
+    rows: list[dict[str, object]] = []
+
+    for decoding_values, decoding_df in normalized.groupby(DECODING_GROUP_COLUMNS, dropna=False):
+        decoding_row = dict(zip(DECODING_GROUP_COLUMNS, decoding_values, strict=True))
+        distributions = compute_regard_distribution(
+            decoding_df,
+            group_col=group_col,
+            label_col=label_col,
+        )
+        for group_name, distribution in distributions.items():
+            rows.append(
+                {
+                    **decoding_row,
+                    "group": group_name,
+                    **distribution,
+                }
+            )
+
+    return pd.DataFrame(rows)
+
+
+def compute_negative_regard_gap_by_decoding(
+    df: pd.DataFrame,
+    group_col: str = "demographic",
+    label_col: str = "regard_label",
+    prompt_type_col: str = "prompt_type",
+    n_bootstrap: int = 1000,
+    ci_level: float = 0.95,
+) -> pd.DataFrame:
+    normalized = ensure_decoding_columns(df)
+    rows: list[dict[str, object]] = []
+
+    for decoding_values, decoding_df in normalized.groupby(DECODING_GROUP_COLUMNS, dropna=False):
+        decoding_row = dict(zip(DECODING_GROUP_COLUMNS, decoding_values, strict=True))
+        prompt_types = decoding_df[prompt_type_col].unique()
+        groups = decoding_df[group_col].unique()
+
+        for prompt_type in prompt_types:
+            prompt_df = decoding_df[decoding_df[prompt_type_col] == prompt_type]
+
+            for index, group_a in enumerate(groups):
+                for group_b in groups[index + 1 :]:
+                    df_a = prompt_df[prompt_df[group_col] == group_a]
+                    df_b = prompt_df[prompt_df[group_col] == group_b]
+
+                    if len(df_a) == 0 or len(df_b) == 0:
+                        continue
+
+                    p_neg_a = (df_a[label_col] == RegardLabelEnum.NEGATIVE).mean()
+                    p_neg_b = (df_b[label_col] == RegardLabelEnum.NEGATIVE).mean()
+                    gap_neg = p_neg_a - p_neg_b
+                    ci_lower, ci_upper = compute_bootstrap_ci_for_gap(
+                        df_a,
+                        df_b,
+                        label_col=label_col,
+                        n_bootstrap=n_bootstrap,
+                        ci_level=ci_level,
+                    )
+
+                    rows.append(
+                        {
+                            **decoding_row,
+                            "prompt_type": prompt_type,
+                            "group_a": group_a,
+                            "group_b": group_b,
+                            "gap_neg": gap_neg,
+                            "ci_lower": ci_lower,
+                            "ci_upper": ci_upper,
+                            "p_neg_a": p_neg_a,
+                            "p_neg_b": p_neg_b,
+                            "n_samples_a": len(df_a),
+                            "n_samples_b": len(df_b),
+                        }
+                    )
+
+    return pd.DataFrame(rows)
+
+
+def compute_quality_metrics_with_ci_by_decoding(
+    df: pd.DataFrame,
+    text_col: str = "completion_text",
+    n_bootstrap: int = 1000,
+    ci_level: float = 0.95,
+) -> pd.DataFrame:
+    normalized = ensure_decoding_columns(df)
+    rows: list[dict[str, object]] = []
+    metric_names = [
+        "distinct_1",
+        "distinct_2",
+        "repeated_3gram_rate",
+        "longest_repetition_span",
+    ]
+
+    for decoding_values, decoding_df in normalized.groupby(DECODING_GROUP_COLUMNS, dropna=False):
+        decoding_row = dict(zip(DECODING_GROUP_COLUMNS, decoding_values, strict=True))
+        texts = decoding_df[text_col].tolist()
+        metrics = compute_quality_metrics(texts)
+        row: dict[str, object] = {
+            **decoding_row,
+            "n_generations": len(decoding_df),
+            **metrics,
+        }
+
+        for metric_name in metric_names:
+            ci_lower, ci_upper = compute_bootstrap_ci_for_dataframe_metric(
+                decoding_df,
+                metric_fn=lambda sample_df, name=metric_name: compute_quality_metrics(
+                    sample_df[text_col].tolist()
+                )[name],
+                n_bootstrap=n_bootstrap,
+                ci_level=ci_level,
+            )
+            row[f"{metric_name}_ci_lower"] = ci_lower
+            row[f"{metric_name}_ci_upper"] = ci_upper
+
+        rows.append(row)
+
+    return pd.DataFrame(rows)
+
+
+def compute_week3_metrics(
+    scores_path: Path,
+    output_dir: Path,
+    n_bootstrap: int = 1000,
+    ci_level: float = 0.95,
+) -> dict[str, Path]:
+    df = ensure_decoding_columns(pd.read_parquet(scores_path))
+    metrics_dir = output_dir / "metrics"
+    metrics_dir.mkdir(parents=True, exist_ok=True)
+    cache_key = scores_path.stem
+
+    output_paths: dict[str, Path] = {}
+
+    regard_path = metrics_dir / f"{cache_key}_week3_regard_distributions.csv"
+    compute_regard_distribution_by_decoding(df).to_csv(regard_path, index=False)
+    output_paths["week3_regard_distributions"] = regard_path
+
+    gap_path = metrics_dir / f"{cache_key}_week3_negative_gaps_with_ci.csv"
+    compute_negative_regard_gap_by_decoding(
+        df,
+        n_bootstrap=n_bootstrap,
+        ci_level=ci_level,
+    ).to_csv(gap_path, index=False)
+    output_paths["week3_negative_gaps_with_ci"] = gap_path
+
+    quality_path = metrics_dir / f"{cache_key}_week3_quality_metrics_with_ci.csv"
+    compute_quality_metrics_with_ci_by_decoding(
+        df,
+        n_bootstrap=n_bootstrap,
+        ci_level=ci_level,
+    ).to_csv(quality_path, index=False)
+    output_paths["week3_quality_metrics_with_ci"] = quality_path
+
+    summary = {
+        "cache_key": cache_key,
+        "created_at_utc": datetime.now(UTC).isoformat(),
+        "total_samples": len(df),
+        "n_bootstrap": n_bootstrap,
+        "ci_level": ci_level,
+        "n_decoding_configs": int(df[DECODING_GROUP_COLUMNS].drop_duplicates().shape[0]),
+    }
+    summary_path = metrics_dir / f"{cache_key}_week3_summary.json"
+    summary_path.write_text(json.dumps(summary, indent=2))
+    output_paths["week3_summary"] = summary_path
+
+    return output_paths
 
 
 def compute_baseline_metrics(

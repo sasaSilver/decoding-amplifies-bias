@@ -14,27 +14,34 @@ from .cache import (
     build_cache_payload,
     compute_generation_cache_key,
 )
+from .device import resolve_torch_device
 from .models import (
     GeneratedText,
     GenerationRecord,
     GenerationRunResult,
 )
 from .prompt_bank import load_prompt_bank, prompt_bank_digest
-from .settings.generation import GenerationConfig
+from .settings.generation import DecodingConfig, GenerationConfig
 
 
-class GreedyGenerationBackend(Protocol):
+class GenerationBackend(Protocol):
     model_name: str
     device: str
 
-    def generate(self, prompt_text: str, max_new_tokens: int, seed: int) -> GeneratedText:
-        """Generate a single greedy continuation for a prompt."""
+    def generate_batch(
+        self,
+        prompt_texts: list[str],
+        max_new_tokens: int,
+        seed: int,
+        decoding: DecodingConfig,
+    ) -> list[GeneratedText]:
+        """Generate continuations for a batch of prompts."""
         ...
 
 
-class GPT2GreedyBackend:
+class GPT2GenerationBackend:
     def __init__(self, model_name: str = "gpt2", device: str | None = None) -> None:
-        resolved_device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+        resolved_device = resolve_torch_device(device)
         tokenizer: Any = AutoTokenizer.from_pretrained(model_name)
         if tokenizer.pad_token_id is None and tokenizer.eos_token is not None:
             tokenizer.pad_token = tokenizer.eos_token
@@ -50,29 +57,65 @@ class GPT2GreedyBackend:
         self._set_seed = set_seed
         self._torch = torch
 
-    def generate(self, prompt_text: str, max_new_tokens: int, seed: int) -> GeneratedText:
+    def generate_batch(
+        self,
+        prompt_texts: list[str],
+        max_new_tokens: int,
+        seed: int,
+        decoding: DecodingConfig,
+    ) -> list[GeneratedText]:
+        if not prompt_texts:
+            return []
+
         self._set_seed(seed)
-        encoded = self._tokenizer(prompt_text, return_tensors="pt")
+        encoded = self._tokenizer(prompt_texts, padding=True, return_tensors="pt")
         encoded = {key: value.to(self.device) for key, value in encoded.items()}
-        prompt_length = int(encoded["input_ids"].shape[1])
+        prompt_lengths = encoded["attention_mask"].sum(dim=1).tolist()
+        generation_kwargs = decoding.to_generation_kwargs()
 
         with self._torch.no_grad():
             output_ids = self._model.generate(
                 **encoded,
                 max_new_tokens=max_new_tokens,
-                do_sample=False,
                 pad_token_id=self._tokenizer.pad_token_id,
+                **generation_kwargs,
             )
 
-        generated_ids = output_ids[0]
-        completion_ids = generated_ids[prompt_length:]
-        raw_text = self._tokenizer.decode(
-            generated_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False
-        )
-        completion_text = self._tokenizer.decode(
-            completion_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False
-        )
-        return GeneratedText(raw_text=raw_text, completion_text=completion_text)
+        results: list[GeneratedText] = []
+        for index, generated_ids in enumerate(output_ids):
+            prompt_length = int(prompt_lengths[index])
+            completion_ids = generated_ids[prompt_length:]
+            raw_text = self._tokenizer.decode(
+                generated_ids,
+                skip_special_tokens=True,
+                clean_up_tokenization_spaces=False,
+            )
+            completion_text = self._tokenizer.decode(
+                completion_ids,
+                skip_special_tokens=True,
+                clean_up_tokenization_spaces=False,
+            )
+            results.append(GeneratedText(raw_text=raw_text, completion_text=completion_text))
+
+        return results
+
+    def generate(
+        self,
+        prompt_text: str,
+        max_new_tokens: int,
+        seed: int,
+        decoding: DecodingConfig,
+    ) -> GeneratedText:
+        return self.generate_batch(
+            prompt_texts=[prompt_text],
+            max_new_tokens=max_new_tokens,
+            seed=seed,
+            decoding=decoding,
+        )[0]
+
+
+GPT2GreedyBackend = GPT2GenerationBackend
+GreedyGenerationBackend = GenerationBackend
 
 
 def _package_version(package_name: str) -> str:
@@ -114,7 +157,7 @@ def _build_manifest(
         "seeds": list(config.seeds),
         "max_new_tokens": config.max_new_tokens,
         "n_samples_per_prompt": config.n_samples_per_prompt,
-        "decoding": config.decoding.model_dump(),
+        "decoding": config.decoding.to_dict(),
         "cache_payload": build_cache_payload(config, prompt_bank_digest_value),
         "environment": environment,
         "record_count": record_count,
@@ -136,7 +179,7 @@ class GenerationRunner:
     def run(
         self,
         config: GenerationConfig,
-        backend: GreedyGenerationBackend | None = None,
+        backend: GenerationBackend | None = None,
     ) -> GenerationRunResult:
         prompts = load_prompt_bank(config.prompt_bank_path)
         digest = prompt_bank_digest(prompts)
@@ -152,7 +195,7 @@ class GenerationRunner:
                 from_cache=True,
             )
 
-        active_backend = backend or GPT2GreedyBackend(
+        active_backend = backend or GPT2GenerationBackend(
             model_name=config.model_name,
             device=config.device,
         )
@@ -160,15 +203,32 @@ class GenerationRunner:
             raise ValueError("Backend model_name must match GenerationConfig.model_name.")
 
         environment = _collect_environment_snapshot(active_backend.device)
-        records: list[dict[str, str | bool | int]] = []
+        records: list[dict[str, str | bool | int | float | None]] = []
         for seed in config.seeds:
             for prompt in prompts:
-                generated = active_backend.generate(
-                    prompt_text=prompt.prompt_text,
-                    max_new_tokens=config.max_new_tokens,
-                    seed=seed,
-                )
-                for sample_index in range(config.n_samples_per_prompt):
+                if config.decoding.do_sample:
+                    generated_texts = active_backend.generate_batch(
+                        prompt_texts=[prompt.prompt_text] * config.n_samples_per_prompt,
+                        max_new_tokens=config.max_new_tokens,
+                        seed=seed,
+                        decoding=config.decoding,
+                    )
+                    if len(generated_texts) != config.n_samples_per_prompt:
+                        raise ValueError(
+                            "Backend must return one generated text per requested sample."
+                        )
+                else:
+                    generated_text = active_backend.generate_batch(
+                        prompt_texts=[prompt.prompt_text],
+                        max_new_tokens=config.max_new_tokens,
+                        seed=seed,
+                        decoding=config.decoding,
+                    )
+                    if len(generated_text) != 1:
+                        raise ValueError("Greedy decoding must return exactly one generated text.")
+                    generated_texts = generated_text * config.n_samples_per_prompt
+
+                for sample_index, generated in enumerate(generated_texts):
                     record = GenerationRecord(
                         cache_key=cache_key,
                         model_name=config.model_name,
@@ -179,6 +239,10 @@ class GenerationRunner:
                         prompt_text=prompt.prompt_text,
                         decoding_strategy=config.decoding.strategy,
                         do_sample=config.decoding.do_sample,
+                        temperature=config.decoding.temperature,
+                        top_k=config.decoding.top_k,
+                        top_p=config.decoding.top_p,
+                        no_repeat_ngram_size=config.decoding.no_repeat_ngram_size,
                         seed=seed,
                         max_new_tokens=config.max_new_tokens,
                         sample_index=sample_index,

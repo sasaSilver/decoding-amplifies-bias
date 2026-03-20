@@ -16,6 +16,8 @@ from app.sanity import (
     verify_label_distribution,
 )
 from app.scoring import (
+    NLGBiasClassifier,
+    ScoringModelLoadError,
     ScoringRunner,
     compute_scoring_cache_key,
     mask_text,
@@ -58,21 +60,151 @@ class TestScoringCacheKey:
 
     def test_cache_key_consistency(self) -> None:
         """Test that cache key is consistent for same inputs."""
-        key1 = compute_scoring_cache_key("abc123", use_masking=True)
-        key2 = compute_scoring_cache_key("abc123", use_masking=True)
+        key1 = compute_scoring_cache_key("abc123", "sasha/regardv3", use_masking=True)
+        key2 = compute_scoring_cache_key("abc123", "sasha/regardv3", use_masking=True)
         assert key1 == key2
 
     def test_cache_key_different_masking(self) -> None:
         """Test that cache key differs with different masking settings."""
-        key1 = compute_scoring_cache_key("abc123", use_masking=True)
-        key2 = compute_scoring_cache_key("abc123", use_masking=False)
+        key1 = compute_scoring_cache_key("abc123", "sasha/regardv3", use_masking=True)
+        key2 = compute_scoring_cache_key("abc123", "sasha/regardv3", use_masking=False)
         assert key1 != key2
 
     def test_cache_key_different_generations(self) -> None:
         """Test that cache key differs for different generations."""
-        key1 = compute_scoring_cache_key("abc123", use_masking=True)
-        key2 = compute_scoring_cache_key("def456", use_masking=True)
+        key1 = compute_scoring_cache_key("abc123", "sasha/regardv3", use_masking=True)
+        key2 = compute_scoring_cache_key("def456", "sasha/regardv3", use_masking=True)
         assert key1 != key2
+
+    def test_cache_key_different_models(self) -> None:
+        """Test that cache key differs for different scoring models."""
+        key1 = compute_scoring_cache_key("abc123", "sasha/regardv3", use_masking=True)
+        key2 = compute_scoring_cache_key("abc123", "/tmp/local-regard", use_masking=True)
+        assert key1 != key2
+
+
+class TestScoringConfig:
+    """Tests for scoring configuration."""
+
+    def test_resolved_model_reference_prefers_model_path(self, tmp_path: Path) -> None:
+        """Test that an explicit local model path is used for loading."""
+        from app.settings.scoring import ScoringConfig
+
+        config = ScoringConfig(model_name="sasha/regardv3", model_path=tmp_path)
+        assert config.resolved_model_reference() == str(tmp_path.resolve())
+
+
+class TestScoringModelLoading:
+    """Tests for scoring model loading failures."""
+
+    def test_classifier_wraps_load_errors(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that model load failures become readable scoring errors."""
+
+        def raise_oom(*args: object, **kwargs: object) -> None:
+            raise RuntimeError("not enough memory: you tried to allocate 4689100800 bytes")
+
+        monkeypatch.setattr("app.scoring.AutoConfig.from_pretrained", raise_oom)
+
+        with pytest.raises(ScoringModelLoadError) as exc_info:
+            NLGBiasClassifier(model_name="broken/model", local_files_only=True)
+
+        message = str(exc_info.value)
+        assert "Failed to load scoring model 'broken/model'" in message
+        assert "local_files_only=True" in message
+        assert "does not fit into available memory" in message
+
+    def test_classifier_mentions_accelerate_for_low_cpu_mem_usage(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Test that accelerate guidance is shown when low_cpu_mem_usage cannot run."""
+
+        def fake_config_load(*args: object, **kwargs: object) -> MagicMock:
+            config = MagicMock()
+            config.num_labels = 4
+            return config
+
+        def raise_accelerate_error(*args: object, **kwargs: object) -> None:
+            raise ImportError("Using `low_cpu_mem_usage=True` or a `device_map` requires Accelerate")
+
+        monkeypatch.setattr("app.scoring.AutoConfig.from_pretrained", fake_config_load)
+        monkeypatch.setattr("app.scoring.AutoTokenizer.from_pretrained", lambda *args, **kwargs: None)
+        monkeypatch.setattr(
+            "app.scoring.AutoModelForSequenceClassification.from_pretrained",
+            raise_accelerate_error,
+        )
+
+        with pytest.raises(ScoringModelLoadError) as exc_info:
+            NLGBiasClassifier(model_name="broken/model", low_cpu_mem_usage=True)
+
+        assert "Install it or set `scoring_low_cpu_mem_usage=false`" in str(exc_info.value)
+
+    def test_classifier_predicts_in_batches(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that batch prediction respects configured batch_size."""
+
+        class FakeTensor:
+            def __init__(self, values: list[int]) -> None:
+                self.values = values
+
+            def to(self, device: str) -> "FakeTensor":
+                return self
+
+            def __iter__(self):
+                return iter(self.values)
+
+        class FakeTokenizer:
+            def __init__(self) -> None:
+                self.batch_sizes: list[int] = []
+
+            def __call__(self, texts: list[str], **kwargs: object) -> dict[str, FakeTensor]:
+                self.batch_sizes.append(len(texts))
+                return {"input_ids": FakeTensor(list(range(len(texts))))}
+
+        class FakeModel:
+            def to(self, device: str) -> "FakeModel":
+                return self
+
+            def eval(self) -> "FakeModel":
+                return self
+
+            def __call__(self, **kwargs: object) -> MagicMock:
+                batch_size = len(kwargs["input_ids"].values)  # type: ignore[index]
+                logits = FakeTensor([index % 4 for index in range(batch_size)])
+                return MagicMock(logits=logits)
+
+        class FakeTorch:
+            @staticmethod
+            def argmax(logits: FakeTensor, dim: int = -1) -> FakeTensor:
+                return logits
+
+            class no_grad:
+                def __enter__(self) -> None:
+                    return None
+
+                def __exit__(self, exc_type, exc, tb) -> None:
+                    return None
+
+        fake_tokenizer = FakeTokenizer()
+
+        monkeypatch.setattr(
+            "app.scoring.AutoConfig.from_pretrained",
+            lambda *args, **kwargs: MagicMock(num_labels=4),
+        )
+        monkeypatch.setattr(
+            "app.scoring.AutoTokenizer.from_pretrained",
+            lambda *args, **kwargs: fake_tokenizer,
+        )
+        monkeypatch.setattr(
+            "app.scoring.AutoModelForSequenceClassification.from_pretrained",
+            lambda *args, **kwargs: FakeModel(),
+        )
+        monkeypatch.setattr("app.scoring.torch", FakeTorch)
+
+        classifier = NLGBiasClassifier(model_name="fake/model", batch_size=2, device="cpu")
+        labels = classifier.predict_batch(["a", "b", "c", "d", "e"])
+
+        assert fake_tokenizer.batch_sizes == [2, 2, 1]
+        assert labels == ["negative", "neutral", "negative", "neutral", "negative"]
 
 
 class TestRegardDistribution:

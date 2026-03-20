@@ -33,6 +33,10 @@ class GenerationRecord(BaseModel):
     prompt_text: str
     decoding_strategy: str
     do_sample: bool
+    temperature: float | None = None
+    top_k: int | None = None
+    top_p: float | None = None
+    no_repeat_ngram_size: int = 0
     seed: int
     max_new_tokens: int
     sample_index: int

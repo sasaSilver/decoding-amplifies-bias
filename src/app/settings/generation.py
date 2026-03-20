@@ -3,12 +3,117 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
+DecodingStrategy = Literal["greedy", "temperature", "top_k", "top_p"]
+
 
 class DecodingConfig(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    strategy: Literal["greedy"] = "greedy"
-    do_sample: bool = False
+    strategy: DecodingStrategy = "greedy"
+    temperature: float | None = None
+    top_k: int | None = None
+    top_p: float | None = None
+    no_repeat_ngram_size: int = 0
+
+    @property
+    def do_sample(self) -> bool:
+        return self.strategy != "greedy"
+
+    def to_dict(self) -> dict[str, str | bool | float | int | None]:
+        return {
+            "strategy": self.strategy,
+            "do_sample": self.do_sample,
+            "temperature": self.temperature,
+            "top_k": self.top_k,
+            "top_p": self.top_p,
+            "no_repeat_ngram_size": self.no_repeat_ngram_size,
+        }
+
+    def to_generation_kwargs(self) -> dict[str, bool | float | int]:
+        kwargs: dict[str, bool | float | int] = {
+            "do_sample": self.do_sample,
+        }
+
+        if self.temperature is not None:
+            kwargs["temperature"] = self.temperature
+        if self.top_k is not None:
+            kwargs["top_k"] = self.top_k
+        if self.top_p is not None:
+            kwargs["top_p"] = self.top_p
+        if self.no_repeat_ngram_size > 0:
+            kwargs["no_repeat_ngram_size"] = self.no_repeat_ngram_size
+
+        return kwargs
+
+    @model_validator(mode="after")
+    def validate_strategy_parameters(self) -> "DecodingConfig":
+        if self.no_repeat_ngram_size < 0:
+            raise ValueError("no_repeat_ngram_size must be non-negative.")
+
+        if self.strategy == "greedy":
+            if self.temperature is not None or self.top_k is not None or self.top_p is not None:
+                raise ValueError("Greedy decoding must not set temperature, top_k, or top_p.")
+            return self
+
+        if self.strategy == "temperature":
+            if self.temperature is None or self.temperature <= 0:
+                raise ValueError("Temperature decoding requires temperature > 0.")
+            if self.top_k is not None or self.top_p is not None:
+                raise ValueError("Temperature decoding must not set top_k or top_p.")
+            return self
+
+        if self.strategy == "top_k":
+            if self.top_k is None or self.top_k < 1:
+                raise ValueError("Top-k decoding requires top_k >= 1.")
+            if self.temperature is not None or self.top_p is not None:
+                raise ValueError("Top-k decoding must not set temperature or top_p.")
+            return self
+
+        if self.top_p is None or not 0 < self.top_p <= 1:
+            raise ValueError("Top-p decoding requires top_p in (0, 1].")
+        if self.temperature is not None or self.top_k is not None:
+            raise ValueError("Top-p decoding must not set temperature or top_k.")
+        return self
+
+
+def build_week3_decoding_grid(
+    *,
+    include_greedy: bool = True,
+    no_repeat_ngram_size: int = 0,
+) -> list[DecodingConfig]:
+    configs: list[DecodingConfig] = []
+
+    if include_greedy:
+        configs.append(DecodingConfig(strategy="greedy", no_repeat_ngram_size=no_repeat_ngram_size))
+
+    for temperature in (0.7, 1.0, 1.3):
+        configs.append(
+            DecodingConfig(
+                strategy="temperature",
+                temperature=temperature,
+                no_repeat_ngram_size=no_repeat_ngram_size,
+            )
+        )
+
+    for top_k in (20, 50, 100):
+        configs.append(
+            DecodingConfig(
+                strategy="top_k",
+                top_k=top_k,
+                no_repeat_ngram_size=no_repeat_ngram_size,
+            )
+        )
+
+    for top_p in (0.8, 0.9, 0.95):
+        configs.append(
+            DecodingConfig(
+                strategy="top_p",
+                top_p=top_p,
+                no_repeat_ngram_size=no_repeat_ngram_size,
+            )
+        )
+
+    return configs
 
 
 class GenerationConfig(BaseModel):
@@ -64,10 +169,4 @@ class GenerationConfig(BaseModel):
             raise ValueError("At least one seed is required.")
         if len(set(self.seeds)) != len(self.seeds):
             raise ValueError("Seeds must be unique.")
-        return self
-
-    @model_validator(mode="after")
-    def validate_decoding(self) -> "GenerationConfig":
-        if self.decoding.strategy != "greedy" or self.decoding.do_sample:
-            raise ValueError("Week 1 only supports greedy decoding.")
         return self

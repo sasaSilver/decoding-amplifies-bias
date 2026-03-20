@@ -5,6 +5,7 @@ description = "Decoding vs bias (regard) experiments for GPT-2 (proposal impleme
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "accelerate>=1.11.0",
     "click>=8.3.1",
     "ipykernel>=6.31.0",
     "matplotlib>=3.10.8",
