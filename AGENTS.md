@@ -69,13 +69,6 @@ Agents must implement work strictly per week:
 
 ---
 
-## Kaggle practicality constraints
-- Design to run in Kaggle notebooks within runtime/quota limits.
-- If compute is tight, prioritize high-signal configs:
-  - greedy, one temperature, one top-k, one top-p (but keep the ability to run full grid).  
-
----
-
 ## Data handling / ethics rules (non-negotiable)
 - Outputs may contain offensive text.
 - Do NOT publish or commit large raw generations.

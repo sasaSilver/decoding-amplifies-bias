@@ -25,3 +25,6 @@ test:
 	$(PYTEST) -v
 
 check: fmt lint test
+
+run:
+	uv run run
