@@ -322,6 +322,7 @@ def compute_quality_metrics_with_ci_by_decoding(
         "repeated_3gram_rate",
         "longest_repetition_span",
     ]
+    alpha = 1 - ci_level
 
     for decoding_values, decoding_df in normalized.groupby(DECODING_GROUP_COLUMNS, dropna=False):
         decoding_row = dict(zip(DECODING_GROUP_COLUMNS, decoding_values, strict=True))
@@ -333,17 +334,33 @@ def compute_quality_metrics_with_ci_by_decoding(
             **metrics,
         }
 
-        for metric_name in metric_names:
-            ci_lower, ci_upper = compute_bootstrap_ci_for_dataframe_metric(
-                decoding_df,
-                metric_fn=lambda sample_df, name=metric_name: compute_quality_metrics(
-                    sample_df[text_col].tolist()
-                )[name],
-                n_bootstrap=n_bootstrap,
-                ci_level=ci_level,
-            )
-            row[f"{metric_name}_ci_lower"] = ci_lower
-            row[f"{metric_name}_ci_upper"] = ci_upper
+        if texts:
+            rng = np.random.default_rng(42)
+            text_array = np.asarray(texts, dtype=object)
+            bootstrap_metrics = {
+                metric_name: np.zeros(n_bootstrap)
+                for metric_name in metric_names
+            }
+
+            for bootstrap_index in range(n_bootstrap):
+                sample_indices = rng.choice(len(text_array), size=len(text_array), replace=True)
+                sampled_texts = text_array[sample_indices].tolist()
+                sampled_metrics = compute_quality_metrics(sampled_texts)
+
+                for metric_name in metric_names:
+                    bootstrap_metrics[metric_name][bootstrap_index] = sampled_metrics[metric_name]
+
+            for metric_name in metric_names:
+                row[f"{metric_name}_ci_lower"] = float(
+                    np.percentile(bootstrap_metrics[metric_name], 100 * alpha / 2)
+                )
+                row[f"{metric_name}_ci_upper"] = float(
+                    np.percentile(bootstrap_metrics[metric_name], 100 * (1 - alpha / 2))
+                )
+        else:
+            for metric_name in metric_names:
+                row[f"{metric_name}_ci_lower"] = 0.0
+                row[f"{metric_name}_ci_upper"] = 0.0
 
         rows.append(row)
 
@@ -354,12 +371,14 @@ def compute_week3_metrics(
     scores_path: Path,
     output_dir: Path,
     n_bootstrap: int = 1000,
+    quality_n_bootstrap: int | None = None,
     ci_level: float = 0.95,
 ) -> dict[str, Path]:
     df = ensure_decoding_columns(pd.read_parquet(scores_path))
     metrics_dir = output_dir / "metrics"
     metrics_dir.mkdir(parents=True, exist_ok=True)
     cache_key = scores_path.stem
+    resolved_quality_n_bootstrap = quality_n_bootstrap or n_bootstrap
 
     output_paths: dict[str, Path] = {}
 
@@ -378,7 +397,7 @@ def compute_week3_metrics(
     quality_path = metrics_dir / f"{cache_key}_week3_quality_metrics_with_ci.csv"
     compute_quality_metrics_with_ci_by_decoding(
         df,
-        n_bootstrap=n_bootstrap,
+        n_bootstrap=resolved_quality_n_bootstrap,
         ci_level=ci_level,
     ).to_csv(quality_path, index=False)
     output_paths["week3_quality_metrics_with_ci"] = quality_path
@@ -388,6 +407,7 @@ def compute_week3_metrics(
         "created_at_utc": datetime.now(UTC).isoformat(),
         "total_samples": len(df),
         "n_bootstrap": n_bootstrap,
+        "quality_n_bootstrap": resolved_quality_n_bootstrap,
         "ci_level": ci_level,
         "n_decoding_configs": int(df[DECODING_GROUP_COLUMNS].drop_duplicates().shape[0]),
     }

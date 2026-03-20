@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     scoring_low_cpu_mem_usage: bool = True
     scoring_batch_size: int = 32
     n_bootstrap: int = 1000
+    quality_n_bootstrap: int = 100
     ci_level: float = 0.95
     n_spot_check: int = 20
 

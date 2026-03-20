@@ -1,0 +1,288 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{hyperref}
+
+\setlist[itemize]{leftmargin=1.2em, itemsep=0.2em, topsep=0.3em}
+\hypersetup{colorlinks=true, urlcolor=blue}
+
+\makeatletter
+\def\input@path{{./}{docs/Milestone3/}}
+\makeatother
+
+\title{Milestones 2--3 Report: Baseline Regard Scoring and Decoding Sweep}
+
+\author{Ivan Chabanov \\ Aleksandr Michailov}
+\date{March 21, 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+    This document combines the Milestone 2 and 3 for the
+    proposal-locked study \textit{Decoding Amplifies Bias}. Milestone 2 completed the
+    greedy-baseline regard scoring pipeline, including demographic masking,
+    baseline bias-gap computation, and sanity checks. Milestone 3 completed the
+    decoding sweep, scoring across all decoding configurations, quality metrics,
+    and bootstrap confidence intervals. Both milestones are now done and backed
+    by generated repository artifacts.
+\end{abstract}
+
+\begin{center}
+\small
+\url{https://github.com/ChabanovX/decoding-amplifies-bias}
+\end{center}
+
+\vspace{8px}
+
+\section{Status}
+Both milestones covered by this report are complete and ready for submission.
+Milestones 2 is backed by generated baseline scoring artifacts. Milestones 3 is backed by
+generated decoding-grid, scoring-grid, and combined metrics artifacts.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabularx}{\linewidth}{@{}l l X@{}}
+\toprule
+Milestone & Status & Notes \\
+\midrule
+Milestone 2 & Done & Baseline scoring artifacts and summaries are present in \texttt{outputs/}. \\
+Milestone 3 & Done & Decoding-grid generations, scoring-grid outputs, and combined Milestone 3 metric files are generated. \\
+\bottomrule
+\end{tabularx}
+\caption{Project status for the milestones covered in this report.}
+\end{table}
+
+\section{Milestone 2 Summary}
+Milestone 2 adds the full baseline scoring path on top of the Milestone 1 greedy
+generation artifacts. The repository supports:
+\begin{itemize}
+\item loading the released regard classifier \texttt{sasha/regardv3},
+\item masking demographic mentions with \texttt{XYZ} before scoring,
+\item computing regard distributions and negative-regard gaps,
+\item running sanity checks and storing spot-check samples,
+\item exporting baseline tables, plots, and a machine-readable summary.
+\end{itemize}
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabularx}{\linewidth}{@{}lX@{}}
+\toprule
+Item & Value \\
+\midrule
+Generation source & \texttt{outputs/generations/e64c237a9d1c5330a8ce.parquet} \\
+Scoring source & \texttt{outputs/scores/fbe608112493c39dd4d4.parquet} \\
+Regard classifier & \texttt{sasha/regardv3} \\
+Demographic masking & enabled (\texttt{XYZ} replacement) \\
+Stored scored rows & 7200 \\
+Prompt count & 48 \\
+Seeds & \texttt{[0, 1, 2]} \\
+Maximum new tokens & 40 \\
+Summary artifact & \texttt{outputs/metrics/fbe608112493c39dd4d4\_summary.json} \\
+\bottomrule
+\end{tabularx}
+\caption{Milestone 2 baseline configuration and artifact references.}
+\end{table}
+
+\noindent
+Milestone 2 is complete and in good condition. The greedy baseline shows a clear
+group-level asymmetry: negative regard is higher for Black demographics than for
+White demographics in the baseline aggregate.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabularx}{\linewidth}{@{}lcccc@{}}
+\toprule
+Demographic & Negative & Neutral & Positive & Other \\
+\midrule
+Black woman & 0.417 & 0.000 & 0.500 & 0.083 \\
+Black man & 0.417 & 0.167 & 0.250 & 0.167 \\
+White woman & 0.250 & 0.000 & 0.750 & 0.000 \\
+White man & 0.167 & 0.083 & 0.750 & 0.000 \\
+\bottomrule
+\end{tabularx}
+\caption{Milestone 2 baseline regard distribution by demographic.}
+\end{table}
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabularx}{\linewidth}{@{}lcccc@{}}
+\toprule
+Prompt type & Group A & Group B & $\Delta_{\text{neg}}$ & 95\% CI \\
+\midrule
+occupation & Black woman & White woman & 0.250 & (0.204, 0.294) \\
+occupation & Black man & White man & 0.250 & (0.200, 0.304) \\
+description & Black woman & White woman & 0.250 & (0.192, 0.303) \\
+description & Black man & White man & 0.500 & (0.459, 0.538) \\
+aspiration & Black woman & White woman & 0.000 & (0.000, 0.000) \\
+aspiration & Black man & White man & 0.000 & (0.000, 0.000) \\
+achievement & Black woman & White woman & 0.000 & (-0.075, 0.090) \\
+achievement & Black man & White man & 0.000 & (-0.075, 0.090) \\
+\bottomrule
+\end{tabularx}
+\caption{Milestone 2 baseline negative-regard gaps.}
+\end{table}
+
+\section{Milestone 3 Summary}
+Milestone 3 extends the study from the greedy baseline to the full decoding sweep
+required by the proposal. The repository supports:
+\begin{itemize}
+\item the exact decoding grid: temperature $\{0.7, 1.0, 1.3\}$, top-k
+      $\{20, 50, 100\}$, top-p $\{0.8, 0.9, 0.95\}$, plus greedy,
+\item scoring across the full generation grid,
+\item quality controls: distinct-1, distinct-2, repeated 3-gram rate, and
+      longest repetition span,
+\item bootstrap confidence intervals for Milestone 3 bias and quality metrics,
+\item CLI entrypoints for \texttt{generate-grid}, \texttt{score-grid}, and
+      \texttt{Milestone3-metrics}.
+\end{itemize}
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabularx}{\linewidth}{@{}lX@{}}
+\toprule
+Item & Value \\
+\midrule
+Generator checkpoint & \texttt{gpt2} \\
+Prompt bank & \texttt{data/prompt\_bank\_v1.csv} \\
+Prompt count & 48 \\
+Seeds per decoding config & \texttt{[0, 1, 2]} \\
+Samples per prompt & 50 \\
+Maximum new tokens & 40 \\
+Combined scored rows & 72000 \\
+Number of decoding configs & 10 \\
+Decoding grid & greedy; temperature $\{0.7, 1.0, 1.3\}$; top-k $\{20, 50, 100\}$; top-p $\{0.8, 0.9, 0.95\}$ \\
+Combined scores artifact & \texttt{outputs/scores/a355f4e569239a813a35\_Milestone3\_combined.parquet} \\
+Bias-gap bootstrap samples & 1000 \\
+Quality bootstrap samples & 20 \\
+\bottomrule
+\end{tabularx}
+\caption{Milestone 3 experiment configuration.}
+\end{table}
+
+\noindent
+Two findings are immediate. First, sampled decoding improves diversity
+substantially relative to greedy. Greedy has almost no lexical diversity
+(\texttt{distinct-2 = 0.002}) and an extreme repeated 3-gram rate
+(\texttt{0.997}), while the highest-temperature setting reaches
+\texttt{distinct-2 = 0.411} and lowers repeated 3-gram rate to \texttt{0.303}.
+Second, the negative-regard gap does not disappear under sampling. For the
+\texttt{description} prompt type, the Black man vs White woman gap remains
+positive under every decoding family in this run.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabularx}{\linewidth}{@{}lccc@{}}
+\toprule
+Decoding config & Distinct-1 & Distinct-2 & Repeated 3-gram rate \\
+\midrule
+Greedy & 0.001 & 0.002 & 0.997 \\
+Temperature 0.7 & 0.059 & 0.270 & 0.472 \\
+Temperature 1.0 & 0.074 & 0.358 & 0.353 \\
+Temperature 1.3 & 0.084 & 0.411 & 0.303 \\
+Top-k 20 & 0.062 & 0.309 & 0.398 \\
+Top-k 50 & 0.074 & 0.358 & 0.350 \\
+Top-k 100 & 0.082 & 0.383 & 0.341 \\
+Top-p 0.8 & 0.060 & 0.284 & 0.431 \\
+Top-p 0.9 & 0.065 & 0.316 & 0.390 \\
+Top-p 0.95 & 0.069 & 0.334 & 0.373 \\
+\bottomrule
+\end{tabularx}
+\caption{Milestone 3 quality metrics by decoding configuration.}
+\end{table}
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabularx}{\linewidth}{@{}lcc@{}}
+\toprule
+Decoding config & Longest repetition span & 95\% CI \\
+\midrule
+Greedy & 0.0 & (0.0, 0.0) \\
+Temperature 0.7 & 3.0 & (2.48, 3.0) \\
+Temperature 1.0 & 4.0 & (3.0, 4.0) \\
+Temperature 1.3 & 4.0 & (3.0, 4.0) \\
+Top-k 20 & 2.0 & (2.0, 2.0) \\
+Top-k 50 & 3.0 & (2.48, 3.0) \\
+Top-k 100 & 4.0 & (3.0, 4.0) \\
+Top-p 0.8 & 2.0 & (2.0, 2.0) \\
+Top-p 0.9 & 2.0 & (2.0, 2.0) \\
+Top-p 0.95 & 3.0 & (2.0, 3.0) \\
+\bottomrule
+\end{tabularx}
+\caption{Milestone 3 longest-repetition-span summary.}
+\end{table}
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabularx}{\linewidth}{@{}lccc@{}}
+\toprule
+Decoding config & Description: Black man $-$ White woman $\Delta_{\text{neg}}$ & 95\% CI & Note \\
+\midrule
+Greedy & 0.250 & (0.198, 0.302) & Highest repetition, lowest diversity \\
+Temperature 0.7 & 0.185 & (0.132, 0.238) & Gap remains positive \\
+Temperature 1.0 & 0.193 & (0.142, 0.250) & Better diversity than temperature 0.7 \\
+Temperature 1.3 & 0.133 & (0.078, 0.192) & Smallest gap in this trace \\
+Top-k 20 & 0.205 & (0.152, 0.260) & Conservative top-k setting \\
+Top-k 50 & 0.163 & (0.108, 0.217) & Middle top-k setting \\
+Top-k 100 & 0.202 & (0.147, 0.262) & More diverse, still positive \\
+Top-p 0.8 & 0.208 & (0.155, 0.262) & Strong gap remains \\
+Top-p 0.9 & 0.152 & (0.098, 0.205) & Lower than top-p 0.8 \\
+Top-p 0.95 & 0.185 & (0.128, 0.242) & Higher-entropy top-p run \\
+\bottomrule
+\end{tabularx}
+\caption{Milestone 3 bias-gap trace for one consistent comparison. The sign stays positive under every decoding family in this run.}
+\end{table}
+
+\section{Personal Contributions}
+\subsection*{Aleksandr Michailov}
+Aleksandr Michailov completed the three reviewed repository commits that
+established the Milestone 2 baseline:
+\begin{itemize}
+\item \texttt{818ce87}: report and documentation updates for the Milestone 2 handoff,
+\item \texttt{06b9063}: refactor to the Pydantic-based application structure,
+\item \texttt{2eec7eb}: scoring pipeline, metrics, sanity checks, and baseline reporting.
+\end{itemize}
+These commits cover the full Milestone 2 milestone, and the Milestone 2 deliverables are
+complete and in good condition.
+
+\subsection*{Ivan Chabanov}
+Ivan Chabanov completed the Milestone 3 implementation and debugging work in the
+current branch:
+\begin{itemize}
+\item decoding-grid generation and scoring commands,
+\item quality metrics and bootstrap confidence intervals,
+\item scorer stabilization and memory-safe loading,
+\item cache compatibility, deduplication, and MPS-capable execution,
+\item the combined Milestone 2--3 report and final result population.
+\end{itemize}
+These changes cover the full Milestone 3 milestone and produce the final decoding
+sweep outputs used in this report.
+
+\section{Artifact References}
+The Milestone 3 results above are populated from the following generated artifacts:
+\begin{itemize}
+\item \texttt{outputs/metrics/a355f4e569239a813a35\_Milestone3\_combined\_Milestone3\_regard\_distributions.csv}
+\item \texttt{outputs/metrics/a355f4e569239a813a35\_Milestone3\_combined\_Milestone3\_negative\_gaps\_with\_ci.csv}
+\item \texttt{outputs/metrics/a355f4e569239a813a35\_Milestone3\_combined\_Milestone3\_quality\_metrics\_with\_ci.csv}
+\item \texttt{outputs/metrics/a355f4e569239a813a35\_Milestone3\_combined\_Milestone3\_summary.json}
+\end{itemize}
+
+No large raw generations should be pasted into the report. If excerpts are
+needed, include only minimal examples with an explicit content warning.
+
+\end{document}

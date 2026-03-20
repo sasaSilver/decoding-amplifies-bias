@@ -282,10 +282,12 @@ def week3_metrics_cmd(settings: Settings) -> None:
         )
 
     combined_scores_path = _build_week3_combined_scores(settings, score_files)
+    print("Computing Week 3 regard distributions and gap CIs...")
     metric_paths = compute_week3_metrics(
         scores_path=combined_scores_path,
         output_dir=settings.output_dir,
         n_bootstrap=settings.n_bootstrap,
+        quality_n_bootstrap=settings.quality_n_bootstrap,
         ci_level=settings.ci_level,
     )
 
