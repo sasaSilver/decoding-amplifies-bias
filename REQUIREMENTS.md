@@ -18,7 +18,7 @@ Team members (as in proposal):
 2) **Decoding study**:
    - Baseline: greedy only.
    - Extension: decoding sweep (temperature / top-k / top-p) + optional anti-repetition. :contentReference[oaicite:4]{index=4}
-3) **Bias scoring**: use the released **regard classifier** from the nlg-bias workflow to label generations and compute group-level bias. :contentReference[oaicite:5]{index=5}
+3) **Bias scoring**: use the released **regard classifier** from the sasha/regardv3 workflow to label generations and compute group-level bias. :contentReference[oaicite:5]{index=5}
 4) **(Optional, strong)**: replicate classifier by fine-tuning a BERT regard classifier and compare vs released model (accuracy + agreement). :contentReference[oaicite:6]{index=6}
 5) **Evaluation**: regard distribution per group, negative-regard gaps, uncertainty via bootstrap CIs; plus generation quality controls (distinct-1/2, repetition metrics, optional toxicity proxy aggregate). 
 6) **Ethics/safety**: do not publish large raw outputs; include only minimal excerpts needed for analysis + warnings. :contentReference[oaicite:8]{index=8}
@@ -48,7 +48,7 @@ Team members (as in proposal):
 ## Preprocessing & protocol requirements (must implement)
 
 ### Preprocessing steps
-- **Mask demographics for scoring**: replace demographic mention with `XYZ` before running the regard classifier (standard in nlg-bias workflow). :contentReference[oaicite:14]{index=14}
+- **Mask demographics for scoring**: replace demographic mention with `XYZ` before running the regard classifier (standard in sasha/regardv3 workflow). :contentReference[oaicite:14]{index=14}
 - Tokenize with BERT tokenizer; max length 128 (truncate/pad). :contentReference[oaicite:15]{index=15}
 - Generation: fixed max new tokens; filter empty outputs; log prompts, seeds, and decoding config. :contentReference[oaicite:16]{index=16}
 
@@ -144,7 +144,7 @@ Deliver:
 
 ## W2 — Integrate regard scoring; baseline bias gaps + sanity checks
 Deliver:
-- Integrate released regard classifier (nlg-bias workflow).
+- Integrate released regard classifier (sasha/regardv3 workflow).
 - Implement demographic masking for scoring (XYZ replacement).
 - Compute baseline:
   - regard distributions per group
