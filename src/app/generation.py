@@ -4,11 +4,10 @@ import platform
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
+
+import pandas as pd
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer, set_seed
-import pandas as pd
-
-from app.settings.generation import GenerationConfig
 
 from .cache import (
     build_artifact_paths,
@@ -21,6 +20,7 @@ from .models import (
     GenerationRunResult,
 )
 from .prompt_bank import load_prompt_bank, prompt_bank_digest
+from .settings.generation import GenerationConfig
 
 
 class GreedyGenerationBackend(Protocol):

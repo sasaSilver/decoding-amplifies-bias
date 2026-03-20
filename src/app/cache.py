@@ -2,9 +2,8 @@ import json
 from hashlib import sha256
 from pathlib import Path
 
-from app.settings.generation import GenerationConfig
-
 from .models import GenerationArtifactPaths
+from .settings.generation import GenerationConfig
 
 
 def build_cache_payload(config: GenerationConfig, prompt_bank_digest: str) -> dict[str, object]:

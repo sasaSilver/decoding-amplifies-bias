@@ -4,51 +4,32 @@ from typing import Literal
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from app.generation import GenerationRunner
-from app.settings.generation import GenerationConfig, DecodingConfig
+from src.app.settings.generation import DecodingConfig, GenerationConfig
+from src.app.settings.scoring import ScoringConfig
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        cli_parse_args=True,
-        cli_prefix="",
-        cli_enforce_required=True,
         env_file=".env",
         env_file_encoding="utf-8",
         env_prefix="",
         extra="ignore",
     )
 
-    prompt_bank: Path = Field(
-        default=Path(__file__).resolve().parents[3] / "data" / "prompt_bank_v1.csv",
-        description="Path to the prompt bank CSV file.",
-    )
-    output_dir: Path = Field(
-        default=Path(__file__).resolve().parents[3] / "outputs",
-        description="Directory for output files.",
-    )
-    model_name: str = Field(
-        default="gpt2",
-        description="HuggingFace model name to use.",
-    )
-    max_new_tokens: int = Field(
-        default=40,
-        ge=1,
-        description="Maximum number of tokens to generate.",
-    )
-    n_samples: int = Field(
-        default=50,
-        ge=1,
-        description="Number of samples to generate per prompt.",
-    )
-    seeds: str = Field(
-        default="0,1,2",
-        description="Random seeds to use (comma-separated).",
-    )
-    device: Literal["cpu", "cuda"] = Field(
-        default="cpu",
-        description="Device to run on (e.g., 'cuda', 'cpu').",
-    )
+    prompt_bank: Path = Path(__file__).resolve().parents[3] / "data" / "prompt_bank_v1.csv"
+    output_dir: Path = Path(__file__).resolve().parents[3] / "outputs"
+    model_name: str = "gpt2"
+    max_new_tokens: int = 40
+    n_samples: int = 50
+    seeds: str = "0,1,2"
+    device: Literal["cpu", "cuda"] = "cpu"
+
+    generations_path: Path = Path(__file__).resolve().parents[3] / "outputs" / "generations"
+    scoring_model: str = "sasha/regardv3"
+    use_masking: bool = True
+    n_bootstrap: int = 1000
+    ci_level: float = 0.95
+    n_spot_check: int = 20
 
     generation: GenerationConfig = Field(
         default_factory=GenerationConfig,
@@ -58,10 +39,13 @@ class Settings(BaseSettings):
         default_factory=DecodingConfig,
         exclude=True,
     )
+    scoring: ScoringConfig = Field(
+        default_factory=ScoringConfig,
+        exclude=True,
+    )
 
     @model_validator(mode="after")
     def populate_generation_config(self) -> "Settings":
-        """Populate generation config from CLI fields."""
         self.generation = GenerationConfig(
             prompt_bank_path=self.prompt_bank,
             output_dir=self.output_dir,
@@ -73,22 +57,17 @@ class Settings(BaseSettings):
             decoding=self.decoding,
         )
         return self
-    
-    def cli_cmd(self) -> None:
-        print(
-        f"""
-App settings:
-{self.model_dump_json(indent=2)}
-        """
+
+    @model_validator(mode="after")
+    def populate_scoring_config(self) -> "Settings":
+        self.scoring = ScoringConfig(
+            generations_path=self.generations_path,
+            output_dir=self.output_dir,
+            model_name=self.scoring_model,
+            use_masking=self.use_masking,
+            device=self.device,
         )
-        
-        result = GenerationRunner().run(self.generation)
-        print(
-            f"""
-App results:
-{result.model_dump_json()}
-            """
-        )
+        return self
 
 
 settings = Settings()

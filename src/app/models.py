@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
@@ -54,3 +55,39 @@ class GenerationRunResult(BaseModel):
     manifest_path: Path
     record_count: int
     from_cache: bool
+
+
+class ScoringArtifactPaths(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    scores_path: Path
+    manifest_path: Path
+
+
+class ScoringRunResult(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    cache_key: str
+    scores_path: Path
+    manifest_path: Path
+    record_count: int
+    from_cache: bool
+
+
+class RegardDistribution(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    negative: float
+    neutral: float
+    positive: float
+    other: float
+    total: int
+
+
+class SanityCheckResult(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    check_name: str
+    passed: bool
+    message: str
+    details: dict[str, Any] | None = None

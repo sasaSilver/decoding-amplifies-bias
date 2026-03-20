@@ -4,13 +4,13 @@ from unittest.mock import MagicMock
 
 import pandas as pd
 
-from app.cache import compute_generation_cache_key
-from app.generation import GenerationRunner
-from app.prompt_bank import (
+from src.app.cache import compute_generation_cache_key
+from src.app.generation import GenerationRunner
+from src.app.prompt_bank import (
     load_prompt_bank,
     prompt_bank_digest,
 )
-from app.settings.settings import GenerationConfig, settings
+from src.app.settings.settings import GenerationConfig, settings
 
 
 def test_generation_cache_key_and_outputs_are_stable(
