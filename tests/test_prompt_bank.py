@@ -1,19 +1,17 @@
-from __future__ import annotations
-
 from collections import Counter
 
 import pytest
 
-from decoding_amplifies_bias.prompt_bank import (
-    DEFAULT_PROMPT_BANK_PATH,
+from src.app.prompt_bank import (
     PromptBankValidationError,
     load_prompt_bank,
     validate_prompt_bank,
 )
+from src.app.settings.settings import settings
 
 
 def test_prompt_bank_meets_week1_constraints() -> None:
-    records = load_prompt_bank(DEFAULT_PROMPT_BANK_PATH)
+    records = load_prompt_bank(settings.generation.prompt_bank_path)
 
     assert 30 <= len(records) <= 80
     assert Counter(record.demographic for record in records) == {
@@ -39,7 +37,7 @@ def test_prompt_bank_meets_week1_constraints() -> None:
 
 
 def test_prompt_bank_validation_rejects_unbalanced_templates() -> None:
-    records = load_prompt_bank(DEFAULT_PROMPT_BANK_PATH)
+    records = load_prompt_bank(settings.generation.prompt_bank_path)
 
     with pytest.raises(PromptBankValidationError):
         validate_prompt_bank(records[:-1])

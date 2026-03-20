@@ -32,3 +32,13 @@ ruff check .
 pytest
 pyright
 ```
+
+
+#  "torch",
+#  "transformers",
+#  "pandas",
+#  "pyarrow",
+#  "tqdm",
+# "pydantic-settings>=2.13.1",
+# "ipykernel>=6.31.0",
+# "pydantic>=2.12.5",

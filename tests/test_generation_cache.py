@@ -1,19 +1,16 @@
-from __future__ import annotations
-
 import json
 from pathlib import Path
 from unittest.mock import MagicMock
 
 import pandas as pd
 
-from decoding_amplifies_bias.cache import compute_generation_cache_key
-from decoding_amplifies_bias.generation import GenerationRunner
-from decoding_amplifies_bias.models import GenerationConfig
-from decoding_amplifies_bias.prompt_bank import (
-    DEFAULT_PROMPT_BANK_PATH,
+from src.app.cache import compute_generation_cache_key
+from src.app.generation import GenerationRunner
+from src.app.prompt_bank import (
     load_prompt_bank,
     prompt_bank_digest,
 )
+from src.app.settings.settings import GenerationConfig, settings
 
 
 def test_generation_cache_key_and_outputs_are_stable(
@@ -21,10 +18,10 @@ def test_generation_cache_key_and_outputs_are_stable(
     fake_greedy_backend: MagicMock,
     generation_runner: GenerationRunner,
 ) -> None:
-    prompt_records = load_prompt_bank(DEFAULT_PROMPT_BANK_PATH)
+    prompt_records = load_prompt_bank(settings.generation.prompt_bank_path)
     digest = prompt_bank_digest(prompt_records)
     config = GenerationConfig(
-        prompt_bank_path=DEFAULT_PROMPT_BANK_PATH,
+        prompt_bank_path=settings.generation.prompt_bank_path,
         output_dir=tmp_path,
         model_name="fake-gpt2",
         max_new_tokens=8,

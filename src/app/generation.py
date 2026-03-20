@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import importlib.metadata
 import json
 import platform
@@ -8,19 +6,21 @@ from pathlib import Path
 from typing import Any, Protocol
 
 import pandas as pd
+import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer, set_seed
 
-from decoding_amplifies_bias.cache import (
+from .cache import (
     build_artifact_paths,
     build_cache_payload,
     compute_generation_cache_key,
 )
-from decoding_amplifies_bias.models import (
+from .models import (
     GeneratedText,
-    GenerationConfig,
     GenerationRecord,
     GenerationRunResult,
 )
-from decoding_amplifies_bias.prompt_bank import load_prompt_bank, prompt_bank_digest
+from .prompt_bank import load_prompt_bank, prompt_bank_digest
+from .settings.generation import GenerationConfig
 
 
 class GreedyGenerationBackend(Protocol):
@@ -34,9 +34,6 @@ class GreedyGenerationBackend(Protocol):
 
 class GPT2GreedyBackend:
     def __init__(self, model_name: str = "gpt2", device: str | None = None) -> None:
-        import torch
-        from transformers import AutoModelForCausalLM, AutoTokenizer, set_seed
-
         resolved_device = device or ("cuda" if torch.cuda.is_available() else "cpu")
         tokenizer: Any = AutoTokenizer.from_pretrained(model_name)
         if tokenizer.pad_token_id is None and tokenizer.eos_token is not None:

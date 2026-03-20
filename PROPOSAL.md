@@ -18,7 +18,7 @@
 ## Data
 
 **Data source(s).**
-- Regard-labeled dataset & tools: `ewsheng/nlg-bias` (`data/regard/*.tsv`; label in col1, text in col2).
+- Regard-labeled dataset & tools: `sasha/regardv3` (`data/regard/*.tsv`; label in col1, text in col2).
 - Prompt templates: paper-style templates (e.g., occupation/descriptors) with a demographic slot; we will use a fixed prompt bank for reproducibility.
 - Generated samples: GPT-2 completions per (prompt type × demographic × decoding).
 

@@ -45,3 +45,5 @@ checkpoints/
 # --- OS ---
 .DS_Store
 Thumbs.db
+
+!outputs/read_outputs.ipynb

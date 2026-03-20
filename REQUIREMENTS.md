@@ -33,7 +33,7 @@ Team members (as in proposal):
 ## Data and resources (as specified)
 
 ### Data source(s)
-- Regard-labeled dataset & tools: `ewsheng/nlg-bias`
+- Regard-labeled dataset & tools: `sasha/regardv3`
   - dataset path: `data/regard/*.tsv`
   - label in column 1, text in column 2. :contentReference[oaicite:10]{index=10}
 - Prompt templates: paper-style templates (occupation/descriptors) with a demographic slot; use a **fixed prompt bank** for reproducibility. :contentReference[oaicite:11]{index=11}
@@ -41,7 +41,7 @@ Team members (as in proposal):
 
 ### License / usage rights constraint
 - Use released checkpoints under their published licenses/terms.
-- If `ewsheng/nlg-bias` has no explicit license, treat it as a research artifact: use with attribution and do not redistribute beyond class submission. :contentReference[oaicite:13]{index=13}
+- If `sasha/regardv3` has no explicit license, treat it as a research artifact: use with attribution and do not redistribute beyond class submission. :contentReference[oaicite:13]{index=13}
 
 ---
 
