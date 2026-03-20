@@ -1,17 +1,16 @@
-from __future__ import annotations
-
 import json
 from hashlib import sha256
 from pathlib import Path
 
-from decoding_amplifies_bias.models import GenerationArtifactPaths, GenerationConfig
+from .models import GenerationArtifactPaths
+from .settings.generation import GenerationConfig
 
 
 def build_cache_payload(config: GenerationConfig, prompt_bank_digest: str) -> dict[str, object]:
     return {
         "model_name": config.model_name,
         "prompt_bank_digest": prompt_bank_digest,
-        "decoding": config.decoding.to_dict(),
+        "decoding": config.decoding.model_dump(),
         "max_new_tokens": config.max_new_tokens,
         "n_samples_per_prompt": config.n_samples_per_prompt,
         "seeds": list(config.seeds),

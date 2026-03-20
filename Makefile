@@ -22,6 +22,9 @@ lint-fix:
 	$(RUFF) check . --fix
 
 test:
-	$(PYTEST)
+	$(PYTEST) -v
 
 check: fmt lint test
+
+run:
+	uv run run

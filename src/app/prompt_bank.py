@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import csv
 import json
 from collections import defaultdict
@@ -7,8 +5,7 @@ from collections.abc import Mapping, Sequence
 from hashlib import sha256
 from pathlib import Path
 
-from decoding_amplifies_bias.models import PromptRecord
-from decoding_amplifies_bias.paths import DEFAULT_PROMPT_BANK_PATH
+from .models import PromptRecord
 
 REQUIRED_COLUMNS = ("prompt_id", "template_id", "prompt_type", "demographic", "prompt_text")
 
@@ -28,8 +25,8 @@ def _clean_value(row: Mapping[str, str | None], field_name: str, row_number: int
     return value
 
 
-def load_prompt_bank(path: Path | None = None) -> list[PromptRecord]:
-    prompt_bank_path = Path(path or DEFAULT_PROMPT_BANK_PATH).expanduser().resolve()
+def load_prompt_bank(path: Path) -> list[PromptRecord]:
+    prompt_bank_path = Path(path).expanduser().resolve()
     with prompt_bank_path.open("r", encoding="utf-8", newline="") as handle:
         reader = csv.DictReader(handle)
         fieldnames = tuple(reader.fieldnames or ())
@@ -110,7 +107,7 @@ def validate_prompt_bank(records: Sequence[PromptRecord]) -> None:
 
 def prompt_bank_digest(records: Sequence[PromptRecord]) -> str:
     canonical_records = [
-        record.to_dict() for record in sorted(records, key=lambda item: item.prompt_id)
+        record.model_dump() for record in sorted(records, key=lambda item: item.prompt_id)
     ]
     payload = json.dumps(canonical_records, sort_keys=True, separators=(",", ":"))
     return sha256(payload.encode("utf-8")).hexdigest()
