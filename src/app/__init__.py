@@ -1,15 +1,14 @@
-from decoding_amplifies_bias.generation import GenerationRunner, GPT2GreedyBackend
-from decoding_amplifies_bias.models import GenerationConfig, GenerationRunResult, PromptRecord
-from decoding_amplifies_bias.prompt_bank import (
-    DEFAULT_PROMPT_BANK_PATH,
+from app.generation import GenerationRunner, GPT2GreedyBackend
+from app.models import GenerationRunResult, PromptRecord
+from app.prompt_bank import (
     PromptBankValidationError,
     load_prompt_bank,
     prompt_bank_digest,
     validate_prompt_bank,
 )
+from app.settings.generation import GenerationConfig
 
 __all__ = [
-    "DEFAULT_PROMPT_BANK_PATH",
     "GPT2GreedyBackend",
     "GenerationConfig",
     "GenerationRunResult",

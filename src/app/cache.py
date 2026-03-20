@@ -1,10 +1,10 @@
-from __future__ import annotations
-
 import json
 from hashlib import sha256
 from pathlib import Path
 
-from decoding_amplifies_bias.models import GenerationArtifactPaths, GenerationConfig
+from app.settings.generation import GenerationConfig
+
+from .models import GenerationArtifactPaths
 
 
 def build_cache_payload(config: GenerationConfig, prompt_bank_digest: str) -> dict[str, object]:

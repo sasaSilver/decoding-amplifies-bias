@@ -1,24 +1,9 @@
-from __future__ import annotations
-
 from pathlib import Path
 from typing import Literal
-
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
-from decoding_amplifies_bias.paths import DEFAULT_OUTPUT_DIR, DEFAULT_PROMPT_BANK_PATH
 
-
-class PromptRecord(BaseModel):
-    model_config = ConfigDict(frozen=True)
-
-    prompt_id: str
-    template_id: str
-    prompt_type: str
-    demographic: str
-    prompt_text: str
-
-
-class GreedyDecodingConfig(BaseModel):
+class DecodingConfig(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     strategy: Literal["greedy"] = "greedy"
@@ -28,14 +13,16 @@ class GreedyDecodingConfig(BaseModel):
 class GenerationConfig(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    prompt_bank_path: Path = DEFAULT_PROMPT_BANK_PATH
-    output_dir: Path = DEFAULT_OUTPUT_DIR
+    repo_root: Path = Path(__file__).resolve().parents[3]
+    prompt_bank_path: Path = repo_root / "data" / "prompt_bank_v1.csv"
+    output_dir: Path = repo_root / "outputs"
+
     model_name: str = "gpt2"
     max_new_tokens: int = 40
     n_samples_per_prompt: int = 50
     seeds: tuple[int, ...] = (0, 1, 2)
     device: str | None = None
-    decoding: GreedyDecodingConfig = GreedyDecodingConfig()
+    decoding: DecodingConfig = DecodingConfig()
 
     @field_validator("prompt_bank_path", "output_dir", mode="before")
     @classmethod
@@ -44,7 +31,9 @@ class GenerationConfig(BaseModel):
 
     @field_validator("seeds", mode="before")
     @classmethod
-    def ensure_tuple(cls, v: list[int] | tuple[int, ...]) -> tuple[int, ...]:
+    def ensure_tuple(cls, v: list[int] | tuple[int, ...] | str) -> tuple[int, ...]:
+        if isinstance(v, str):
+            return tuple(int(s.strip()) for s in v.split(","))
         return tuple(v)
 
     @field_validator("model_name")
@@ -69,7 +58,7 @@ class GenerationConfig(BaseModel):
         return v
 
     @model_validator(mode="after")
-    def validate_seeds(self) -> GenerationConfig:
+    def validate_seeds(self) -> "GenerationConfig":
         if not self.seeds:
             raise ValueError("At least one seed is required.")
         if len(set(self.seeds)) != len(self.seeds):
@@ -77,50 +66,7 @@ class GenerationConfig(BaseModel):
         return self
 
     @model_validator(mode="after")
-    def validate_decoding(self) -> GenerationConfig:
+    def validate_decoding(self) -> "GenerationConfig":
         if self.decoding.strategy != "greedy" or self.decoding.do_sample:
             raise ValueError("Week 1 only supports greedy decoding.")
         return self
-
-
-class GeneratedText(BaseModel):
-    model_config = ConfigDict(frozen=True)
-
-    raw_text: str
-    completion_text: str
-
-
-class GenerationRecord(BaseModel):
-    model_config = ConfigDict(frozen=True)
-
-    cache_key: str
-    model_name: str
-    prompt_id: str
-    template_id: str
-    prompt_type: str
-    demographic: str
-    prompt_text: str
-    decoding_strategy: str
-    do_sample: bool
-    seed: int
-    max_new_tokens: int
-    sample_index: int
-    raw_text: str
-    completion_text: str
-
-
-class GenerationArtifactPaths(BaseModel):
-    model_config = ConfigDict(frozen=True)
-
-    generations_path: Path
-    manifest_path: Path
-
-
-class GenerationRunResult(BaseModel):
-    model_config = ConfigDict(frozen=True)
-
-    cache_key: str
-    generations_path: Path
-    manifest_path: Path
-    record_count: int
-    from_cache: bool

@@ -1,11 +1,9 @@
-from __future__ import annotations
-
 from unittest.mock import MagicMock, create_autospec
 
 import pytest
 
-from decoding_amplifies_bias.generation import GenerationRunner, GreedyGenerationBackend
-from decoding_amplifies_bias.models import GeneratedText
+from app.generation import GenerationRunner, GreedyGenerationBackend
+from app.models import GeneratedText
 
 
 @pytest.fixture
