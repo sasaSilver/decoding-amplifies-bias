@@ -9,7 +9,7 @@ from transformers import BertConfig, BertForSequenceClassification, BertTokenize
 
 from .benchmark import build_explanation_benchmark
 from .config import ExAIBenchmarkConfig, ExAIDataConfig, ExAIEvalConfig, ExAIPaths
-from .evaluate import evaluate_exai_classifier
+from .evaluate import _checkpoint_reference_digest, evaluate_exai_classifier
 from .faithfulness import run_faithfulness_benchmark
 from .inference import ExAIInferenceRunner
 from .lrp_transformer import TransformerLRPExplainer
@@ -23,6 +23,14 @@ SMOKE_LABELS = [
     ("positive", "The nurse helped the patient."),
     ("other", "The artist waited outside."),
 ]
+
+
+class NotebookArtifactError(RuntimeError):
+    """Raised when the notebook is asked to consume missing real ExAI artifacts."""
+
+
+def _read_json(path: Path) -> dict[str, Any]:
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def _build_smoke_vocab(vocab_path: Path) -> None:
@@ -176,8 +184,7 @@ def ensure_smoke_score_sources(paths: ExAIPaths) -> Path:
     return combined_manifest_path
 
 
-def ensure_notebook_artifacts(paths: ExAIPaths | None = None) -> dict[str, Path]:
-    resolved_paths = (paths or ExAIPaths()).ensure_dirs()
+def _ensure_smoke_notebook_artifacts(resolved_paths: ExAIPaths) -> dict[str, Path]:
     dataset_dir = ensure_smoke_dataset(resolved_paths)
 
     existing_checkpoints = sorted(resolved_paths.models_dir.glob("classifier_*"))
@@ -258,4 +265,136 @@ def ensure_notebook_artifacts(paths: ExAIPaths | None = None) -> dict[str, Path]
         "eval_dir": resolved_paths.eval_dir,
         "faithfulness_metrics": faithfulness_artifacts["metrics"],
         "sensitivity_metrics": sensitivity_artifacts["metrics"],
+    }
+
+
+def _latest_real_checkpoint(paths: ExAIPaths) -> Path:
+    candidates = [
+        path
+        for path in sorted(paths.models_dir.glob("classifier_*"))
+        if path.name != "classifier_smoke_local"
+        and (path / "training_manifest.json").exists()
+        and (path / "training_metrics.json").exists()
+    ]
+    if not candidates:
+        raise NotebookArtifactError(
+            "No real ExAI checkpoint exists under "
+            f"{paths.models_dir}. Run `train-exai-classifier --dataset-path data/regard` "
+            "with a local `bert-base-uncased` checkpoint first."
+        )
+    return max(candidates, key=lambda path: path.stat().st_mtime)
+
+
+def _is_smoke_score_path(paths: ExAIPaths, score_path: Path) -> bool:
+    benchmark_source_root = (paths.root / "benchmark_source").resolve()
+    try:
+        return score_path.resolve().is_relative_to(benchmark_source_root)
+    except ValueError:
+        return False
+
+
+def _latest_real_benchmark(paths: ExAIPaths) -> Path:
+    candidates: list[Path] = []
+    for manifest_path in sorted(paths.benchmark_dir.glob("benchmark_*.json")):
+        payload = _read_json(manifest_path)
+        benchmark_path = Path(payload["artifacts"]["benchmark_path"]).expanduser().resolve()
+        source_scores = [
+            Path(item["path"]).expanduser().resolve() for item in payload.get("source_scores", [])
+        ]
+        if not benchmark_path.exists():
+            continue
+        if source_scores and all(
+            _is_smoke_score_path(paths, score_path) for score_path in source_scores
+        ):
+            continue
+        candidates.append(benchmark_path)
+
+    if not candidates:
+        raise NotebookArtifactError(
+            "No real ExAI benchmark exists under "
+            f"{paths.benchmark_dir}. Run `build-exai-benchmark` against the saved week 3 score "
+            "manifests before opening the notebook."
+        )
+    return max(candidates, key=lambda path: path.stat().st_mtime)
+
+
+def _required_eval_artifacts(paths: ExAIPaths, checkpoint_dir: Path) -> dict[str, Path]:
+    eval_key = _checkpoint_reference_digest(checkpoint_dir)[:20]
+    artifacts = {
+        "test_metrics": paths.eval_dir / f"eval_{eval_key}_test_metrics.json",
+        "benchmark_metrics": paths.eval_dir / f"eval_{eval_key}_benchmark_metrics.json",
+        "agreement_metrics": paths.eval_dir / f"eval_{eval_key}_agreement.json",
+        "error_analysis": paths.eval_dir / f"eval_{eval_key}_error_analysis.json",
+    }
+    missing = [path for path in artifacts.values() if not path.exists()]
+    if missing:
+        raise NotebookArtifactError(
+            "Missing real ExAI evaluation artifacts for checkpoint "
+            f"{checkpoint_dir}. Run `eval-exai-classifier` with the saved real checkpoint and "
+            "benchmark before opening the notebook."
+        )
+    return artifacts
+
+
+def _require_report_metrics(
+    *,
+    report_path: Path,
+    checkpoint_dir: Path,
+    benchmark_path: Path,
+    command_name: str,
+) -> Path:
+    if not report_path.exists():
+        raise NotebookArtifactError(
+            f"Missing {report_path.name}. Run `{command_name}` with the real checkpoint and "
+            "benchmark before opening the notebook."
+        )
+
+    payload = _read_json(report_path)
+    if payload.get("checkpoint_path") != str(checkpoint_dir.resolve()):
+        raise NotebookArtifactError(
+            f"{report_path.name} does not reference the real checkpoint at {checkpoint_dir}. "
+            f"Re-run `{command_name}` after the real training run completes."
+        )
+    if payload.get("benchmark_path") != str(benchmark_path.resolve()):
+        raise NotebookArtifactError(
+            f"{report_path.name} does not reference the real benchmark at {benchmark_path}. "
+            f"Re-run `{command_name}` after rebuilding the real benchmark."
+        )
+    return report_path
+
+
+def ensure_notebook_artifacts(
+    paths: ExAIPaths | None = None,
+    *,
+    allow_smoke: bool = False,
+) -> dict[str, Path]:
+    resolved_paths = (paths or ExAIPaths()).ensure_dirs()
+    if allow_smoke:
+        return _ensure_smoke_notebook_artifacts(resolved_paths)
+
+    checkpoint_dir = _latest_real_checkpoint(resolved_paths)
+    benchmark_path = _latest_real_benchmark(resolved_paths)
+    eval_artifacts = _required_eval_artifacts(resolved_paths, checkpoint_dir)
+    faithfulness_metrics = _require_report_metrics(
+        report_path=resolved_paths.reports_dir / "faithfulness" / "faithfulness_metrics.json",
+        checkpoint_dir=checkpoint_dir,
+        benchmark_path=benchmark_path,
+        command_name="exai-faithfulness",
+    )
+    sensitivity_metrics = _require_report_metrics(
+        report_path=resolved_paths.reports_dir / "sensitivity" / "sensitivity_metrics.json",
+        checkpoint_dir=checkpoint_dir,
+        benchmark_path=benchmark_path,
+        command_name="exai-sensitivity",
+    )
+    return {
+        "checkpoint_dir": checkpoint_dir,
+        "benchmark_path": benchmark_path,
+        "eval_dir": resolved_paths.eval_dir,
+        "test_metrics": eval_artifacts["test_metrics"],
+        "benchmark_metrics": eval_artifacts["benchmark_metrics"],
+        "agreement_metrics": eval_artifacts["agreement_metrics"],
+        "error_analysis": eval_artifacts["error_analysis"],
+        "faithfulness_metrics": faithfulness_metrics,
+        "sensitivity_metrics": sensitivity_metrics,
     }

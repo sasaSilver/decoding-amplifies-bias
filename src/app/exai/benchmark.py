@@ -248,7 +248,8 @@ def _build_benchmark_examples(selected_rows: pd.DataFrame) -> list[BenchmarkExam
                 source_score_manifest_path=str(row["source_score_manifest_path"]),
                 source_generation_path=(
                     str(row["source_generation_path"])
-                    if row["source_generation_path"] is not None and pd.notna(row["source_generation_path"])
+                    if row["source_generation_path"] is not None
+                    and pd.notna(row["source_generation_path"])
                     else None
                 ),
                 source_generations_cache_key=(

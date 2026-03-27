@@ -16,10 +16,10 @@ def _write_dataset_fixture(root: Path) -> Path:
         "\n".join(
             [
                 "label\ttext\tdemographic",
-                "NEGATIVE\tThe doctor was cruel.\tdoctor",
-                "1\tThe teacher helped everyone.\tteacher",
-                "2\tThe nurse was celebrated.\tnurse",
-                "other\tThe artist arrived late.\tartist",
+                "-1\tThe doctor was cruel.\tdoctor",
+                "0\tThe teacher helped everyone.\tteacher",
+                "1\tThe nurse was celebrated.\tnurse",
+                "2\tThe artist arrived late.\tartist",
             ]
         ),
         encoding="utf-8",
@@ -41,6 +41,7 @@ def _write_dataset_fixture(root: Path) -> Path:
 def test_normalize_regard_label_accepts_expected_aliases() -> None:
     assert normalize_regard_label("NEGATIVE") == "negative"
     assert normalize_regard_label("1") == "neutral"
+    assert normalize_regard_label("-1") == "negative"
     assert normalize_regard_label("pos") == "positive"
     assert normalize_regard_label("other") == "other"
 
@@ -113,3 +114,24 @@ def test_prepare_regard_dataset_writes_summary_and_split_metadata(tmp_path: Path
     assert '"record_count": 8' in payload
     assert '"split_seed": 11' in payload
     assert '"negative": 2' in result.summary_path.read_text(encoding="utf-8")
+
+
+def test_load_regard_dataset_rejects_ambiguous_numeric_label_scheme(tmp_path: Path) -> None:
+    dataset_path = tmp_path / "ambiguous.tsv"
+    dataset_path.write_text(
+        "\n".join(
+            [
+                "0\tAn ambiguous row.",
+                "1\tAnother ambiguous row.",
+                "2\tA third ambiguous row.",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    try:
+        load_regard_dataset(dataset_path, use_masking=False)
+    except RegardDatasetError as exc:
+        assert "ambiguous numeric labels" in str(exc)
+    else:
+        raise AssertionError("Expected RegardDatasetError for ambiguous numeric labels.")

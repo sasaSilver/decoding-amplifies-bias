@@ -351,26 +351,41 @@ def build_exai_benchmark(
 
 @cli.command(name="train-exai-classifier")
 @click.option("--dataset-path", type=click.Path(path_type=Path), required=True)
+@click.option("--model-name", type=str, default="bert-base-uncased")
+@click.option("--max-length", type=int, default=128)
 @click.option("--batch-size", type=int, default=8)
 @click.option("--learning-rate", type=float, default=2e-5)
 @click.option("--epochs", type=int, default=3)
+@click.option("--early-stopping/--no-early-stopping", default=True)
+@click.option("--patience", type=int, default=2)
 @click.option("--device", type=str, default="auto")
 def train_exai_classifier_cli(
     dataset_path: Path,
+    model_name: str,
+    max_length: int,
     batch_size: int,
     learning_rate: float,
     epochs: int,
+    early_stopping: bool,
+    patience: int,
     device: str,
 ) -> None:
     from .exai.cli import train_exai_classifier_cmd
 
-    artifacts = train_exai_classifier_cmd(
-        dataset_path=dataset_path,
-        batch_size=batch_size,
-        learning_rate=learning_rate,
-        epochs=epochs,
-        device=device,
-    )
+    try:
+        artifacts = train_exai_classifier_cmd(
+            dataset_path=dataset_path,
+            model_name=model_name,
+            max_length=max_length,
+            batch_size=batch_size,
+            learning_rate=learning_rate,
+            epochs=epochs,
+            early_stopping=early_stopping,
+            early_stopping_patience=patience,
+            device=device,
+        )
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise click.ClickException(str(exc)) from exc
     click.echo(f"Checkpoint: {artifacts['checkpoint_dir']}")
     click.echo(f"Manifest: {artifacts['manifest']}")
     click.echo(f"Metrics: {artifacts['metrics']}")
@@ -383,6 +398,8 @@ def train_exai_classifier_cli(
 @click.option("--batch-size", type=int, default=8)
 @click.option("--max-length", type=int, default=128)
 @click.option("--device", type=str, default="auto")
+@click.option("--compare-to-released/--no-compare-to-released", default=True)
+@click.option("--released-model-path", type=click.Path(path_type=Path), default=None)
 def eval_exai_classifier_cli(
     dataset_path: Path,
     checkpoint_path: Path,
@@ -390,17 +407,24 @@ def eval_exai_classifier_cli(
     batch_size: int,
     max_length: int,
     device: str,
+    compare_to_released: bool,
+    released_model_path: Path | None,
 ) -> None:
     from .exai.cli import eval_exai_classifier_cmd
 
-    artifacts = eval_exai_classifier_cmd(
-        dataset_path=dataset_path,
-        checkpoint_path=checkpoint_path,
-        benchmark_path=benchmark_path,
-        batch_size=batch_size,
-        max_length=max_length,
-        device=device,
-    )
+    try:
+        artifacts = eval_exai_classifier_cmd(
+            dataset_path=dataset_path,
+            checkpoint_path=checkpoint_path,
+            benchmark_path=benchmark_path,
+            batch_size=batch_size,
+            max_length=max_length,
+            device=device,
+            compare_to_released=compare_to_released,
+            released_model_path=released_model_path,
+        )
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise click.ClickException(str(exc)) from exc
     for name, path in artifacts.items():
         click.echo(f"{name}: {path}")
 

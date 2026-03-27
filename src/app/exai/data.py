@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 from collections import Counter
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -12,7 +13,8 @@ from app.scoring import mask_text
 from .constants import EXAI_LABELS
 from .utils import canonical_json_digest, file_digest
 
-LABEL_ALIASES = {
+TEXT_LABEL_ALIASES = {
+    "-1": "negative",
     "0": "negative",
     "neg": "negative",
     "negative": "negative",
@@ -24,6 +26,18 @@ LABEL_ALIASES = {
     "positive": "positive",
     "3": "other",
     "other": "other",
+}
+LEGACY_NUMERIC_LABEL_ALIASES = {
+    "0": "negative",
+    "1": "neutral",
+    "2": "positive",
+    "3": "other",
+}
+NLG_BIAS_NUMERIC_LABEL_ALIASES = {
+    "-1": "negative",
+    "0": "neutral",
+    "1": "positive",
+    "2": "other",
 }
 LABEL_HEADER_NAMES = ("label", "labels", "regard_label", "class", "target")
 TEXT_HEADER_NAMES = ("text", "sentence", "comment", "utterance")
@@ -50,13 +64,59 @@ class RegardDatasetRecord(BaseModel):
     masking_applied: bool = False
 
 
-def normalize_regard_label(raw_label: str) -> str:
+def normalize_regard_label(
+    raw_label: str,
+    *,
+    numeric_aliases: Mapping[str, str] | None = None,
+) -> str:
     normalized = raw_label.strip().lower()
-    if normalized not in LABEL_ALIASES:
+    if numeric_aliases is not None and normalized in numeric_aliases:
+        return numeric_aliases[normalized]
+    if normalized in TEXT_LABEL_ALIASES:
+        return TEXT_LABEL_ALIASES[normalized]
+    raise RegardDatasetError(
+        f"Unsupported regard label {raw_label!r}. Expected one of {sorted(TEXT_LABEL_ALIASES)}."
+    )
+
+
+def _infer_numeric_label_aliases(
+    raw_labels: Sequence[str],
+    *,
+    source_path: Path,
+) -> Mapping[str, str] | None:
+    normalized_labels = {label.strip().lower() for label in raw_labels if label.strip()}
+    if not normalized_labels:
+        return None
+
+    numeric_labels = {label for label in normalized_labels if label.lstrip("-").isdigit()}
+    if not numeric_labels:
+        return None
+
+    supported_numeric_labels = set(LEGACY_NUMERIC_LABEL_ALIASES) | set(
+        NLG_BIAS_NUMERIC_LABEL_ALIASES
+    )
+    unsupported_numeric_labels = numeric_labels - supported_numeric_labels
+    if unsupported_numeric_labels:
         raise RegardDatasetError(
-            f"Unsupported regard label {raw_label!r}. Expected one of {sorted(LABEL_ALIASES)}."
+            f"{source_path} contains unsupported numeric labels: {sorted(unsupported_numeric_labels)}."
         )
-    return LABEL_ALIASES[normalized]
+
+    uses_nlg_bias_scheme = "-1" in numeric_labels
+    uses_legacy_scheme = "3" in numeric_labels
+    if uses_nlg_bias_scheme and uses_legacy_scheme:
+        raise RegardDatasetError(
+            f"{source_path} mixes incompatible numeric label schemes: {sorted(numeric_labels)}."
+        )
+    if uses_nlg_bias_scheme:
+        return NLG_BIAS_NUMERIC_LABEL_ALIASES
+    if uses_legacy_scheme:
+        return LEGACY_NUMERIC_LABEL_ALIASES
+    if numeric_labels <= {"0", "1", "2"}:
+        raise RegardDatasetError(
+            f"{source_path} uses ambiguous numeric labels {sorted(numeric_labels)}. "
+            "Use textual labels or include -1/3 to disambiguate the source scheme."
+        )
+    return LEGACY_NUMERIC_LABEL_ALIASES
 
 
 def resolve_dataset_sources(dataset_path: Path) -> list[Path]:
@@ -110,8 +170,9 @@ def _build_record(
     demographic: str | None,
     masked_text: str | None,
     use_masking: bool,
+    numeric_label_aliases: Mapping[str, str] | None,
 ) -> RegardDatasetRecord:
-    normalized_label = normalize_regard_label(label)
+    normalized_label = normalize_regard_label(label, numeric_aliases=numeric_label_aliases)
     cleaned_text = text.strip()
     if not cleaned_text:
         raise RegardDatasetError(f"{source_path}:{source_row} has empty text.")
@@ -158,8 +219,13 @@ def _load_rows_with_header(source_path: Path, use_masking: bool) -> list[RegardD
 
         demographic_field = _match_header(fieldnames, DEMOGRAPHIC_HEADER_NAMES)
         masked_text_field = _match_header(fieldnames, MASKED_TEXT_HEADER_NAMES)
+        rows = list(reader)
+        numeric_label_aliases = _infer_numeric_label_aliases(
+            [_clean_cell(row.get(label_field)) for row in rows],
+            source_path=source_path,
+        )
         records: list[RegardDatasetRecord] = []
-        for row_number, row in enumerate(reader, start=2):
+        for row_number, row in enumerate(rows, start=2):
             records.append(
                 _build_record(
                     label=_clean_cell(row.get(label_field)),
@@ -173,6 +239,7 @@ def _load_rows_with_header(source_path: Path, use_masking: bool) -> list[RegardD
                     if masked_text_field
                     else None,
                     use_masking=use_masking,
+                    numeric_label_aliases=numeric_label_aliases,
                 )
             )
         return records
@@ -182,7 +249,12 @@ def _load_rows_without_header(source_path: Path, use_masking: bool) -> list[Rega
     records: list[RegardDatasetRecord] = []
     with source_path.open("r", encoding="utf-8", newline="") as handle:
         reader = csv.reader(handle, delimiter="\t")
-        for row_number, row in enumerate(reader, start=1):
+        rows = list(reader)
+        numeric_label_aliases = _infer_numeric_label_aliases(
+            [_clean_cell(row[0]) for row in rows if row],
+            source_path=source_path,
+        )
+        for row_number, row in enumerate(rows, start=1):
             cells = [_clean_cell(cell) for cell in row]
             if not any(cells):
                 continue
@@ -202,6 +274,7 @@ def _load_rows_without_header(source_path: Path, use_masking: bool) -> list[Rega
                     demographic=demographic,
                     masked_text=masked_text,
                     use_masking=use_masking,
+                    numeric_label_aliases=numeric_label_aliases,
                 )
             )
     return records

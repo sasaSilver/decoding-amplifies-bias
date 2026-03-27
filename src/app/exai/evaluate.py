@@ -35,6 +35,7 @@ def evaluate_exai_classifier(
     eval_config: ExAIEvalConfig,
     benchmark_config: ExAIBenchmarkConfig | None = None,
     released_backend: NLGBiasClassifier | Any | None = None,
+    released_backend_status: dict[str, Any] | None = None,
     tokenizer_loader: Any | None = None,
     model_loader: Any | None = None,
 ) -> dict[str, Path]:
@@ -89,13 +90,24 @@ def evaluate_exai_classifier(
         reference_labels=benchmark_df["predicted_label"].tolist(),
         comparison_labels=benchmark_metrics["predicted_labels"],
     )
-    if released_backend is not None:
-        released_comparison = compare_with_released_scorer(
-            texts=[record.active_text for record in dataset.splits["test"]],
-            model_predictions=test_metrics["predicted_labels"],
-            released_backend=released_backend,
-        )
-        agreement_payload["released_test_split"] = released_comparison
+    if eval_config.compare_to_released:
+        if released_backend is not None:
+            released_comparison = compare_with_released_scorer(
+                texts=[record.active_text for record in dataset.splits["test"]],
+                model_predictions=test_metrics["predicted_labels"],
+                released_backend=released_backend,
+            )
+            agreement_payload["released_test_split"] = {
+                "status": "available",
+                **released_comparison,
+            }
+        else:
+            agreement_payload["released_test_split"] = released_backend_status or {
+                "status": "unavailable",
+                "reason": (
+                    "compare_to_released=True, but no local released scorer backend was provided."
+                ),
+            }
     agreement_payload["created_at_utc"] = utc_now_iso()
     write_json(agreement_path, agreement_payload)
 

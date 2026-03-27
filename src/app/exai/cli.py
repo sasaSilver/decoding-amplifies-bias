@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from app.scoring import NLGBiasClassifier, ScoringModelLoadError
+
 from .benchmark import build_explanation_benchmark
 from .config import (
     ExAIBenchmarkConfig,
@@ -23,6 +25,59 @@ def _paths(output_root: Path | None) -> ExAIPaths:
     if output_root is None:
         return ExAIPaths().ensure_dirs()
     return ExAIPaths(root=output_root).ensure_dirs()
+
+
+def _cached_released_model_path() -> Path | None:
+    snapshots_dir = (
+        Path.home() / ".cache" / "huggingface" / "hub" / "models--sasha--regardv3" / "snapshots"
+    )
+    if not snapshots_dir.exists():
+        return None
+    snapshots = sorted(
+        path
+        for path in snapshots_dir.iterdir()
+        if path.is_dir()
+        and (path / "config.json").exists()
+        and ((path / "pytorch_model.bin").exists() or (path / "model.safetensors").exists())
+    )
+    if not snapshots:
+        return None
+    return max(snapshots, key=lambda path: path.stat().st_mtime)
+
+
+def _load_released_backend(
+    *,
+    released_model_path: Path | None,
+    batch_size: int,
+    device: str,
+) -> tuple[NLGBiasClassifier | None, dict[str, str] | None]:
+    resolved_model_path = (
+        released_model_path.expanduser().resolve()
+        if released_model_path is not None
+        else _cached_released_model_path()
+    )
+    model_reference = (
+        str(resolved_model_path) if resolved_model_path is not None else "sasha/regardv3"
+    )
+    try:
+        return (
+            NLGBiasClassifier(
+                model_name=model_reference,
+                local_files_only=True,
+                batch_size=batch_size,
+                device=device,
+            ),
+            None,
+        )
+    except ScoringModelLoadError as exc:
+        return (
+            None,
+            {
+                "status": "unavailable",
+                "reason": str(exc),
+                "model_reference": model_reference,
+            },
+        )
 
 
 def build_exai_benchmark_cmd(
@@ -58,14 +113,17 @@ def train_exai_classifier_cmd(
     validation_fraction: float = 0.1,
     use_masking: bool = True,
     model_name: str = "bert-base-uncased",
+    max_length: int = 128,
     batch_size: int = 8,
     learning_rate: float = 2e-5,
     epochs: int = 3,
+    early_stopping: bool = True,
     early_stopping_patience: int = 2,
     seed: int = 13,
     device: str = "auto",
 ) -> dict[str, Path]:
     paths = _paths(output_root)
+    resolved_patience = early_stopping_patience if early_stopping else max(epochs, 1)
     result = train_exai_classifier(
         data_config=ExAIDataConfig(
             dataset_path=dataset_path,
@@ -77,10 +135,11 @@ def train_exai_classifier_cmd(
         ),
         training_config=ExAITrainingConfig(
             model_name=model_name,
+            max_length=max_length,
             batch_size=batch_size,
             learning_rate=learning_rate,
             epochs=epochs,
-            early_stopping_patience=early_stopping_patience,
+            early_stopping_patience=resolved_patience,
             seed=seed,
             device=device,
             output_paths=paths,
@@ -106,8 +165,18 @@ def eval_exai_classifier_cmd(
     batch_size: int = 8,
     max_length: int = 128,
     device: str = "auto",
+    compare_to_released: bool = True,
+    released_model_path: Path | None = None,
 ) -> dict[str, Path]:
     paths = _paths(output_root)
+    released_backend = None
+    released_backend_status = None
+    if compare_to_released:
+        released_backend, released_backend_status = _load_released_backend(
+            released_model_path=released_model_path,
+            batch_size=batch_size,
+            device=device,
+        )
     return evaluate_exai_classifier(
         data_config=ExAIDataConfig(
             dataset_path=dataset_path,
@@ -123,8 +192,11 @@ def eval_exai_classifier_cmd(
             batch_size=batch_size,
             max_length=max_length,
             device=device,
+            compare_to_released=compare_to_released,
             output_paths=paths,
         ),
+        released_backend=released_backend,
+        released_backend_status=released_backend_status,
     )
 
 

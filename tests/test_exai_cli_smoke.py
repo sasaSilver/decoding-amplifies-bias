@@ -70,7 +70,24 @@ def test_exai_cli_commands_are_registered(monkeypatch) -> None:
     assert (
         runner.invoke(
             cli,
-            ["train-exai-classifier", "--dataset-path", "/tmp/regard"],
+            [
+                "train-exai-classifier",
+                "--dataset-path",
+                "/tmp/regard",
+                "--model-name",
+                "/tmp/local-bert",
+                "--max-length",
+                "96",
+                "--batch-size",
+                "4",
+                "--learning-rate",
+                "0.001",
+                "--epochs",
+                "2",
+                "--no-early-stopping",
+                "--patience",
+                "5",
+            ],
         ).exit_code
         == 0
     )
@@ -143,3 +160,14 @@ def test_exai_cli_commands_are_registered(monkeypatch) -> None:
         "faithfulness",
         "sensitivity",
     } <= calls.keys()
+    assert calls["train"] == {
+        "dataset_path": Path("/tmp/regard"),
+        "model_name": "/tmp/local-bert",
+        "max_length": 96,
+        "batch_size": 4,
+        "learning_rate": 0.001,
+        "epochs": 2,
+        "early_stopping": False,
+        "early_stopping_patience": 5,
+        "device": "auto",
+    }

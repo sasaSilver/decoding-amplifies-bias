@@ -11,7 +11,7 @@ import pandas as pd
 
 from .inference import ExAIInferenceRunner
 from .lrp_transformer import TransformerLRPExplainer
-from .utils import write_json
+from .utils import runner_checkpoint_path, runner_device_name, utc_now_iso, write_json
 from .visualize import SPECIAL_TOKENS, merge_wordpieces
 
 
@@ -119,8 +119,13 @@ def run_faithfulness_benchmark(
         for row in benchmark_records
     ]
     metrics_payload = {
+        "created_at_utc": utc_now_iso(),
+        "benchmark_path": str(benchmark_path.resolve()),
+        "checkpoint_path": runner_checkpoint_path(runner),
+        "device": runner_device_name(runner),
         "case_count": len(cases),
         "removal_count": removal_count,
+        "random_seed": random_seed,
         "top_drop_mean": mean(float(case["top_drop"]) for case in cases) if cases else 0.0,
         "least_drop_mean": mean(float(case["least_drop"]) for case in cases) if cases else 0.0,
         "random_drop_mean": mean(float(case["random_drop"]) for case in cases) if cases else 0.0,

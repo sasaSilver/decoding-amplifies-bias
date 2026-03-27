@@ -9,7 +9,7 @@ import pandas as pd
 
 from .inference import ExAIInferenceRunner
 from .lrp_transformer import TransformerLRPExplainer
-from .utils import write_json
+from .utils import runner_checkpoint_path, runner_device_name, utc_now_iso, write_json
 from .visualize import merge_wordpieces
 
 
@@ -104,6 +104,10 @@ def run_sensitivity_benchmark(
         for name in perturbation_names
     }
     payload = {
+        "created_at_utc": utc_now_iso(),
+        "benchmark_path": str(benchmark_path.resolve()),
+        "checkpoint_path": runner_checkpoint_path(runner),
+        "device": runner_device_name(runner),
         "case_count": len(cases),
         "top_k": top_k,
         "summary": summary,
