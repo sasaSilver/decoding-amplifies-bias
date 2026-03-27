@@ -125,10 +125,14 @@ class TestScoringModelLoading:
             return config
 
         def raise_accelerate_error(*args: object, **kwargs: object) -> None:
-            raise ImportError("Using `low_cpu_mem_usage=True` or a `device_map` requires Accelerate")
+            raise ImportError(
+                "Using `low_cpu_mem_usage=True` or a `device_map` requires Accelerate"
+            )
 
         monkeypatch.setattr("app.scoring.AutoConfig.from_pretrained", fake_config_load)
-        monkeypatch.setattr("app.scoring.AutoTokenizer.from_pretrained", lambda *args, **kwargs: None)
+        monkeypatch.setattr(
+            "app.scoring.AutoTokenizer.from_pretrained", lambda *args, **kwargs: None
+        )
         monkeypatch.setattr(
             "app.scoring.AutoModelForSequenceClassification.from_pretrained",
             raise_accelerate_error,

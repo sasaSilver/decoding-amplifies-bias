@@ -33,7 +33,9 @@ def _generation_signature_from_manifest(manifest: dict[str, object]) -> str:
 
     payload = {
         "model_name": cache_payload.get("model_name", manifest.get("model_name")),
-        "prompt_bank_digest": cache_payload.get("prompt_bank_digest", manifest.get("prompt_bank_digest")),
+        "prompt_bank_digest": cache_payload.get(
+            "prompt_bank_digest", manifest.get("prompt_bank_digest")
+        ),
         "max_new_tokens": cache_payload.get("max_new_tokens", manifest.get("max_new_tokens")),
         "n_samples_per_prompt": cache_payload.get(
             "n_samples_per_prompt",
@@ -327,6 +329,187 @@ def score_grid() -> None:
 @cli.command(name="week3-metrics")
 def week3_metrics() -> None:
     week3_metrics_cmd(Settings())
+
+
+@cli.command(name="build-exai-benchmark")
+@click.option("--source-manifest-path", type=click.Path(path_type=Path), default=None)
+@click.option("--examples-per-label", type=int, default=3)
+@click.option("--selection-seed", type=int, default=13)
+def build_exai_benchmark(
+    source_manifest_path: Path | None, examples_per_label: int, selection_seed: int
+) -> None:
+    from .exai.cli import build_exai_benchmark_cmd
+
+    artifacts = build_exai_benchmark_cmd(
+        source_manifest_path=source_manifest_path,
+        examples_per_label=examples_per_label,
+        selection_seed=selection_seed,
+    )
+    click.echo(f"Benchmark: {artifacts['benchmark']}")
+    click.echo(f"Manifest: {artifacts['manifest']}")
+
+
+@cli.command(name="train-exai-classifier")
+@click.option("--dataset-path", type=click.Path(path_type=Path), required=True)
+@click.option("--batch-size", type=int, default=8)
+@click.option("--learning-rate", type=float, default=2e-5)
+@click.option("--epochs", type=int, default=3)
+@click.option("--device", type=str, default="auto")
+def train_exai_classifier_cli(
+    dataset_path: Path,
+    batch_size: int,
+    learning_rate: float,
+    epochs: int,
+    device: str,
+) -> None:
+    from .exai.cli import train_exai_classifier_cmd
+
+    artifacts = train_exai_classifier_cmd(
+        dataset_path=dataset_path,
+        batch_size=batch_size,
+        learning_rate=learning_rate,
+        epochs=epochs,
+        device=device,
+    )
+    click.echo(f"Checkpoint: {artifacts['checkpoint_dir']}")
+    click.echo(f"Manifest: {artifacts['manifest']}")
+    click.echo(f"Metrics: {artifacts['metrics']}")
+
+
+@cli.command(name="eval-exai-classifier")
+@click.option("--dataset-path", type=click.Path(path_type=Path), required=True)
+@click.option("--checkpoint-path", type=click.Path(path_type=Path), required=True)
+@click.option("--benchmark-path", type=click.Path(path_type=Path), default=None)
+@click.option("--batch-size", type=int, default=8)
+@click.option("--max-length", type=int, default=128)
+@click.option("--device", type=str, default="auto")
+def eval_exai_classifier_cli(
+    dataset_path: Path,
+    checkpoint_path: Path,
+    benchmark_path: Path | None,
+    batch_size: int,
+    max_length: int,
+    device: str,
+) -> None:
+    from .exai.cli import eval_exai_classifier_cmd
+
+    artifacts = eval_exai_classifier_cmd(
+        dataset_path=dataset_path,
+        checkpoint_path=checkpoint_path,
+        benchmark_path=benchmark_path,
+        batch_size=batch_size,
+        max_length=max_length,
+        device=device,
+    )
+    for name, path in artifacts.items():
+        click.echo(f"{name}: {path}")
+
+
+@cli.command(name="explain-text")
+@click.option("--checkpoint-path", type=click.Path(path_type=Path), required=True)
+@click.option("--text", type=str, required=True)
+@click.option("--target-label", type=str, default=None)
+@click.option("--max-length", type=int, default=128)
+@click.option("--device", type=str, default="auto")
+def explain_text_cli(
+    checkpoint_path: Path,
+    text: str,
+    target_label: str | None,
+    max_length: int,
+    device: str,
+) -> None:
+    from .exai.cli import explain_text_cmd
+
+    artifacts = explain_text_cmd(
+        checkpoint_path=checkpoint_path,
+        text=text,
+        target_label=target_label,
+        max_length=max_length,
+        device=device,
+    )
+    click.echo(f"JSON: {artifacts['json']}")
+    click.echo(f"HTML: {artifacts['html']}")
+
+
+@cli.command(name="explain-benchmark")
+@click.option("--checkpoint-path", type=click.Path(path_type=Path), required=True)
+@click.option("--benchmark-path", type=click.Path(path_type=Path), required=True)
+@click.option("--max-examples", type=int, default=5)
+@click.option("--max-length", type=int, default=128)
+@click.option("--device", type=str, default="auto")
+def explain_benchmark_cli(
+    checkpoint_path: Path,
+    benchmark_path: Path,
+    max_examples: int,
+    max_length: int,
+    device: str,
+) -> None:
+    from .exai.cli import explain_benchmark_cmd
+
+    paths = explain_benchmark_cmd(
+        checkpoint_path=checkpoint_path,
+        benchmark_path=benchmark_path,
+        max_examples=max_examples,
+        max_length=max_length,
+        device=device,
+    )
+    for path in paths:
+        click.echo(str(path))
+
+
+@cli.command(name="exai-faithfulness")
+@click.option("--checkpoint-path", type=click.Path(path_type=Path), required=True)
+@click.option("--benchmark-path", type=click.Path(path_type=Path), required=True)
+@click.option("--removal-count", type=int, default=1)
+@click.option("--random-seed", type=int, default=13)
+@click.option("--max-length", type=int, default=128)
+@click.option("--device", type=str, default="auto")
+def exai_faithfulness_cli(
+    checkpoint_path: Path,
+    benchmark_path: Path,
+    removal_count: int,
+    random_seed: int,
+    max_length: int,
+    device: str,
+) -> None:
+    from .exai.cli import exai_faithfulness_cmd
+
+    artifacts = exai_faithfulness_cmd(
+        checkpoint_path=checkpoint_path,
+        benchmark_path=benchmark_path,
+        removal_count=removal_count,
+        random_seed=random_seed,
+        max_length=max_length,
+        device=device,
+    )
+    for name, path in artifacts.items():
+        click.echo(f"{name}: {path}")
+
+
+@cli.command(name="exai-sensitivity")
+@click.option("--checkpoint-path", type=click.Path(path_type=Path), required=True)
+@click.option("--benchmark-path", type=click.Path(path_type=Path), required=True)
+@click.option("--top-k", type=int, default=3)
+@click.option("--max-length", type=int, default=128)
+@click.option("--device", type=str, default="auto")
+def exai_sensitivity_cli(
+    checkpoint_path: Path,
+    benchmark_path: Path,
+    top_k: int,
+    max_length: int,
+    device: str,
+) -> None:
+    from .exai.cli import exai_sensitivity_cmd
+
+    artifacts = exai_sensitivity_cmd(
+        checkpoint_path=checkpoint_path,
+        benchmark_path=benchmark_path,
+        top_k=top_k,
+        max_length=max_length,
+        device=device,
+    )
+    for name, path in artifacts.items():
+        click.echo(f"{name}: {path}")
 
 
 def main() -> None:

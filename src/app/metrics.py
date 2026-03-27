@@ -337,10 +337,7 @@ def compute_quality_metrics_with_ci_by_decoding(
         if texts:
             rng = np.random.default_rng(42)
             text_array = np.asarray(texts, dtype=object)
-            bootstrap_metrics = {
-                metric_name: np.zeros(n_bootstrap)
-                for metric_name in metric_names
-            }
+            bootstrap_metrics = {metric_name: np.zeros(n_bootstrap) for metric_name in metric_names}
 
             for bootstrap_index in range(n_bootstrap):
                 sample_indices = rng.choice(len(text_array), size=len(text_array), replace=True)
