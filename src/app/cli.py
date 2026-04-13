@@ -1,4 +1,5 @@
 import json
+from collections.abc import Mapping
 from hashlib import sha256
 from pathlib import Path
 
@@ -7,7 +8,7 @@ import click
 from .settings.settings import Settings
 
 
-def _normalize_decoding_payload(decoding: dict[str, object]) -> dict[str, object]:
+def _normalize_decoding_payload(decoding: Mapping[str, object]) -> dict[str, object]:
     payload = {
         "strategy": decoding["strategy"],
         "do_sample": decoding["do_sample"],
@@ -25,10 +26,11 @@ def _normalize_decoding_payload(decoding: dict[str, object]) -> dict[str, object
     return payload
 
 
-def _generation_signature_from_manifest(manifest: dict[str, object]) -> str:
-    cache_payload = dict(manifest.get("cache_payload", {}))
+def _generation_signature_from_manifest(manifest: Mapping[str, object]) -> str:
+    raw_cache_payload = manifest.get("cache_payload")
+    cache_payload = raw_cache_payload if isinstance(raw_cache_payload, Mapping) else {}
     decoding = cache_payload.get("decoding", manifest.get("decoding", {}))
-    if not isinstance(decoding, dict):
+    if not isinstance(decoding, Mapping):
         raise ValueError("Generation manifest decoding payload must be a dictionary.")
 
     payload = {
@@ -329,6 +331,25 @@ def score_grid() -> None:
 @cli.command(name="week3-metrics")
 def week3_metrics() -> None:
     week3_metrics_cmd(Settings())
+
+
+@cli.command(name="week5-antirep")
+def week5_antirep() -> None:
+    from .week5_antirep import run_week5_antirepetition
+
+    artifacts = run_week5_antirepetition(Settings())
+    print("\nWeek 5 anti-repetition artifacts:")
+    print(f"  Baseline combined scores: {artifacts.baseline_bundle.combined_scores_path}")
+    print(f"  Anti-repetition combined scores: {artifacts.antirep_bundle.combined_scores_path}")
+    print(f"  Gap comparison: {artifacts.gap_comparison_path}")
+    print(f"  Quality comparison: {artifacts.quality_comparison_path}")
+    print(f"  Regard comparison: {artifacts.regard_comparison_path}")
+    print(f"  Key trace: {artifacts.key_trace_path}")
+    print(f"  Summary: {artifacts.summary_path}")
+    print(f"  Quality plot: {artifacts.quality_plot_path}")
+    print(f"  Gap plot: {artifacts.gap_plot_path}")
+    print(f"  Final summary: {artifacts.final_summary_path}")
+    print(f"  Report: {artifacts.report_path}")
 
 
 @cli.command(name="build-exai-benchmark")
