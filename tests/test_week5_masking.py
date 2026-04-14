@@ -1,10 +1,13 @@
+import json
 from pathlib import Path
 
 import pandas as pd
 import pytest
 
+from app.settings.settings import Settings
 from app.week5_masking import (
     MaskingBundle,
+    _collect_score_files_for_masking,
     compare_gap_metrics,
     compare_regard_distributions,
     extract_key_trace,
@@ -65,6 +68,98 @@ def _bundle(tmp_path: Path, stem: str, use_masking: bool) -> MaskingBundle:
         score_files=[],
         use_masking=use_masking,
     )
+
+
+def test_collect_score_files_for_masking_excludes_antirepetition_runs(tmp_path: Path) -> None:
+    output_dir = tmp_path / "outputs"
+    scores_dir = output_dir / "scores"
+    manifests_dir = output_dir / "manifests"
+    scores_dir.mkdir(parents=True)
+    manifests_dir.mkdir(parents=True)
+
+    settings = Settings(
+        output_dir=output_dir,
+        generations_path=output_dir / "generations",
+    )
+    model_reference = settings.scoring.resolved_model_reference()
+
+    baseline_generation_key = "baseline_generation"
+    antirep_generation_key = "antirep_generation"
+    pd.DataFrame({"label": ["positive"]}).to_parquet(
+        scores_dir / "baseline_score.parquet", index=False
+    )
+    pd.DataFrame({"label": ["positive"]}).to_parquet(
+        scores_dir / "antirep_score.parquet", index=False
+    )
+
+    (manifests_dir / "baseline_score.json").write_text(
+        (
+            "{\n"
+            f'  "generations_cache_key": "{baseline_generation_key}",\n'
+            f'  "model_reference": "{model_reference}",\n'
+            '  "use_masking": true\n'
+            "}\n"
+        ),
+        encoding="utf-8",
+    )
+    (manifests_dir / "antirep_score.json").write_text(
+        (
+            "{\n"
+            f'  "generations_cache_key": "{antirep_generation_key}",\n'
+            f'  "model_reference": "{model_reference}",\n'
+            '  "use_masking": true\n'
+            "}\n"
+        ),
+        encoding="utf-8",
+    )
+
+    baseline_generation_manifest = {
+        "model_name": "gpt2",
+        "prompt_bank_digest": "baseline",
+        "max_new_tokens": 40,
+        "n_samples_per_prompt": 50,
+        "seeds": [0, 1, 2],
+        "decoding": {
+            "strategy": "greedy",
+            "do_sample": False,
+            "temperature": None,
+            "top_k": None,
+            "top_p": None,
+            "no_repeat_ngram_size": 0,
+        },
+    }
+    antirep_generation_manifest = {
+        "model_name": "gpt2",
+        "prompt_bank_digest": "antirep",
+        "max_new_tokens": 40,
+        "n_samples_per_prompt": 50,
+        "seeds": [0, 1, 2],
+        "decoding": {
+            "strategy": "greedy",
+            "do_sample": False,
+            "temperature": None,
+            "top_k": None,
+            "top_p": None,
+            "no_repeat_ngram_size": 3,
+        },
+    }
+    (manifests_dir / f"{baseline_generation_key}.json").write_text(
+        json.dumps(baseline_generation_manifest, indent=2),
+        encoding="utf-8",
+    )
+    (manifests_dir / f"{antirep_generation_key}.json").write_text(
+        json.dumps(antirep_generation_manifest, indent=2),
+        encoding="utf-8",
+    )
+
+    artifacts = _collect_score_files_for_masking(
+        settings,
+        use_masking=True,
+        no_repeat_ngram_size=0,
+    )
+
+    assert len(artifacts) == 1
+    assert artifacts[0].score_path.name == "baseline_score.parquet"
 
 
 def test_compare_gap_metrics_computes_expected_deltas() -> None:

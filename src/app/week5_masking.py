@@ -233,6 +233,7 @@ def _dataframe_records(df: pd.DataFrame) -> list[dict[str, object]]:
 def _collect_score_files_for_masking(
     settings: Settings,
     use_masking: bool,
+    no_repeat_ngram_size: int,
 ) -> list[MaskingScoreArtifact]:
     manifests_dir = settings.output_dir / "manifests"
     scores_dir = settings.output_dir / "scores"
@@ -265,6 +266,8 @@ def _collect_score_files_for_masking(
 
         generation_manifest = _read_json_object(generation_manifest_path)
         decoding = _decoding_from_generation_manifest(generation_manifest)
+        if _coerce_int(decoding.get("no_repeat_ngram_size"), default=0) != no_repeat_ngram_size:
+            continue
         signature = _generation_signature_from_manifest(generation_manifest)
         artifact = MaskingScoreArtifact(
             score_path=score_path,
@@ -317,6 +320,7 @@ def _build_combined_scores(
         "model_reference": settings.scoring.resolved_model_reference(),
         "record_count": len(combined_df),
         "use_masking": use_masking,
+        "no_repeat_ngram_size": masking_settings.target_no_repeat_ngram_size,
         "n_decoding_configs": len(score_files),
     }
     manifest_path.write_text(
@@ -332,10 +336,16 @@ def _build_masking_bundle(
     stem: str,
     use_masking: bool,
 ) -> MaskingBundle:
-    score_files = _collect_score_files_for_masking(settings, use_masking)
+    score_files = _collect_score_files_for_masking(
+        settings,
+        use_masking,
+        masking_settings.target_no_repeat_ngram_size,
+    )
     if len(score_files) != 10:
         raise ValueError(
-            f"Expected 10 unique scored decoding configs for use_masking={use_masking}, "
+            "Expected 10 unique scored decoding configs for "
+            f"use_masking={use_masking} and "
+            f"no_repeat_ngram_size={masking_settings.target_no_repeat_ngram_size}, "
             f"found {len(score_files)}."
         )
 
@@ -548,7 +558,12 @@ def summarize_masking_sensitivity(
         bool(key_trace_df["sign_changed"].any()) if not key_trace_df.empty else False
     )
     key_trace_positive_all = (
-        bool((key_trace_df["masked_gap_neg"] > 0).all()) if not key_trace_df.empty else False
+        bool(
+            (key_trace_df["masked_gap_neg"] > 0).all()
+            and (key_trace_df["unmasked_gap_neg"] > 0).all()
+        )
+        if not key_trace_df.empty
+        else False
     )
 
     if key_trace_positive_all and not key_trace_sign_flip:
@@ -586,7 +601,7 @@ def summarize_masking_sensitivity(
         else 0,
         "sign_flip_count": sign_flip_count,
         "max_absolute_delta_gap_neg": (
-            float(gap_comparison_df["delta_gap_neg"].abs().max())
+            max(abs(_require_float(value)) for value in gap_comparison_df["delta_gap_neg"].tolist())
             if not gap_comparison_df.empty
             else 0.0
         ),

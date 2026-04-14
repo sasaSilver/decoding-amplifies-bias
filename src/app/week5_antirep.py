@@ -88,6 +88,10 @@ def _utc_now_iso() -> str:
     return datetime.now(UTC).isoformat()
 
 
+def _report_date_str() -> str:
+    return datetime.now(UTC).astimezone().strftime("%B %d, %Y").replace(" 0", " ")
+
+
 def _read_json_object(path: Path) -> dict[str, Any]:
     payload = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
@@ -886,8 +890,17 @@ def _build_final_summary(
     antirepetition_done = True
     masking_done = masking_integration["status"] == "available"
     final_conclusion = antirep_summary["main_week3_conclusion_text"]
+    summary_artifacts = dict(comparison_paths)
     if masking_done:
-        final_conclusion += " Masking-sensitivity artifacts are available and ready to integrate."
+        masking_summary = masking_integration["summary"]
+        masking_path = masking_integration["path"]
+        if isinstance(masking_path, str):
+            summary_artifacts["masking_summary"] = masking_path
+        final_conclusion += (
+            " " + str(masking_summary["main_week3_conclusion_text"])
+            if isinstance(masking_summary, dict) and "main_week3_conclusion_text" in masking_summary
+            else " Masking-sensitivity artifacts are available and integrated."
+        )
     else:
         final_conclusion += " Masking-sensitivity integration is still pending."
 
@@ -899,7 +912,7 @@ def _build_final_summary(
         "w4_complete": True,
         "w5_antirepetition_complete": antirepetition_done,
         "w5_masking_complete": masking_done,
-        "comparison_artifacts": comparison_paths,
+        "comparison_artifacts": summary_artifacts,
         "final_conclusion_text": final_conclusion,
         "main_week3_conclusion_changed": antirep_summary["main_week3_conclusion_changed"],
         "key_trace_stays_positive": antirep_summary["key_trace"]["stays_positive_across_configs"],
@@ -918,12 +931,42 @@ def _write_report(
     report_dir = settings.output_dir.parent / "docs" / "week5"
     report_dir.mkdir(parents=True, exist_ok=True)
     report_path = report_dir / "report.tex"
-    masking_status = antirep_summary["masking_integration"]["status"]
+    masking_integration = antirep_summary["masking_integration"]
+    masking_status = masking_integration["status"]
+    masking_summary = masking_integration["summary"]
     masking_text = (
-        "Masking-sensitivity artifacts from Person 1 are available and should be folded into the final submission narrative."
+        "Masking-sensitivity artifacts are available and integrated below."
         if masking_status == "available"
         else "Masking-sensitivity artifacts are not yet available, so this report covers the anti-repetition ablation only."
     )
+    masking_section = ""
+    masking_artifact_references = ""
+    if isinstance(masking_summary, dict):
+        masking_artifact_references = f"""
+\\item \\texttt{{{_tex_escape(str((settings.output_dir / "metrics" / "week5_masking_gap_comparison.csv").relative_to(settings.output_dir.parent)))}}}
+\\item \\texttt{{{_tex_escape(str((settings.output_dir / "metrics" / "week5_masking_distribution_comparison.csv").relative_to(settings.output_dir.parent)))}}}
+\\item \\texttt{{{_tex_escape(str((settings.output_dir / "metrics" / "week5_masking_key_trace.csv").relative_to(settings.output_dir.parent)))}}}
+\\item \\texttt{{{_tex_escape(str((settings.output_dir / "metrics" / "week5_masking_summary.json").relative_to(settings.output_dir.parent)))}}}
+"""
+        masking_section = f"""
+\\section{{Masking Sensitivity}}
+The masking-sensitivity ablation compares the baseline Week 3 masked scores against unmasked scores
+for the same baseline decoding grid. Its machine-readable summary concludes:
+
+\\begin{{quote}}
+{_tex_escape(str(masking_summary["main_week3_conclusion_text"]))}
+\\end{{quote}}
+
+Three points matter most:
+\\begin{{itemize}}
+\\item Masked vs unmasked comparison rows: {int(masking_summary["total_compared_prompt_type_group_pairs"])}.
+\\item Sign flips across all compared gap rows: {int(masking_summary["sign_flip_count"])}.
+\\item The highlighted key trace {"stayed positive across all configurations" if bool(masking_summary["key_trace"]["stays_positive_across_configs"]) else "did not stay positive across all configurations"}.
+\\end{{itemize}}
+
+The masking artifact summary is stored at
+\\texttt{{{_tex_escape(str(Path(str(masking_integration["path"])).relative_to(settings.output_dir.parent)))}}}.
+"""
     report = f"""\\documentclass[11pt]{{article}}
 
 \\usepackage[margin=1in]{{geometry}}
@@ -940,7 +983,7 @@ def _write_report(
 
 \\title{{Week 5 Report: Anti-Repetition Ablation and Final Integration}}
 \\author{{Ivan Chabanov \\\\ Alexander Michailov}}
-\\date{{April 13, 2026}}
+\\date{{{_report_date_str()}}}
 
 \\begin{{document}}
 \\maketitle
@@ -1009,6 +1052,8 @@ Config & Base $\\Delta_{{neg}}$ & Anti $\\Delta_{{neg}}$ & Change & Sign flip \\
 \\caption{{Highlighted Week 3 trace: \\texttt{{description / Black man vs White woman}}.}}
 \\end{{table}}
 
+{masking_section}
+
 \\section{{Final Interpretation}}
 Three points matter most:
 \\begin{{itemize}}
@@ -1030,6 +1075,7 @@ project status is stored at
 \\item \\texttt{{{_tex_escape(str(paths.key_trace_path.relative_to(settings.output_dir.parent)))}}}
 \\item \\texttt{{{_tex_escape(str(paths.quality_plot_path.relative_to(settings.output_dir.parent)))}}}
 \\item \\texttt{{{_tex_escape(str(paths.gap_plot_path.relative_to(settings.output_dir.parent)))}}}
+{masking_artifact_references}
 \\end{{itemize}}
 
 No large raw generations should be pasted into this report. Include only minimal excerpts with an

@@ -17,6 +17,7 @@ class MaskingSettings(BaseModel):
         "group_a": "Black man",
         "group_b": "White woman",
     }
+    target_no_repeat_ngram_size: int = 0
     masked_stem: str = "week5_masked_combined"
     unmasked_stem: str = "week5_unmasked_combined"
 

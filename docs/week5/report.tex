@@ -14,7 +14,7 @@
 
 \title{Week 5 Report: Anti-Repetition Ablation and Final Integration}
 \author{Ivan Chabanov \\ Alexander Michailov}
-\date{April 13, 2026}
+\date{April 14, 2026}
 
 \begin{document}
 \maketitle
@@ -30,7 +30,7 @@ quality.
 
 \section{Status}
 Weeks 1--4 are complete. Week 5 anti-repetition is now complete and backed by generated repository
-artifacts. Masking-sensitivity artifacts are not yet available, so this report covers the anti-repetition ablation only.
+artifacts. Masking-sensitivity artifacts are available and integrated below.
 
 \begin{table}[t]
 \centering
@@ -101,6 +101,26 @@ Config & Base $\Delta_{neg}$ & Anti $\Delta_{neg}$ & Change & Sign flip \\
 \caption{Highlighted Week 3 trace: \texttt{description / Black man vs White woman}.}
 \end{table}
 
+
+\section{Masking Sensitivity}
+The masking-sensitivity ablation compares the baseline Week 3 masked scores against unmasked scores
+for the same baseline decoding grid. Its machine-readable summary concludes:
+
+\begin{quote}
+Masking does not change the main Week 3 conclusion. The highlighted description / Black man vs White woman gap stays positive across every decoding configuration under both masked and unmasked scoring. The main Week 3 takeaway remains stable.
+\end{quote}
+
+Three points matter most:
+\begin{itemize}
+\item Masked vs unmasked comparison rows: 240.
+\item Sign flips across all compared gap rows: 2.
+\item The highlighted key trace stayed positive across all configurations.
+\end{itemize}
+
+The masking artifact summary is stored at
+\texttt{outputs/metrics/week5\_masking\_summary.json}.
+
+
 \section{Final Interpretation}
 Three points matter most:
 \begin{itemize}
@@ -122,6 +142,12 @@ project status is stored at
 \item \texttt{outputs/metrics/week5\_antirep\_key\_trace.csv}
 \item \texttt{outputs/plots/week5\_antirep\_quality\_delta.png}
 \item \texttt{outputs/plots/week5\_antirep\_gap\_delta.png}
+
+\item \texttt{outputs/metrics/week5\_masking\_gap\_comparison.csv}
+\item \texttt{outputs/metrics/week5\_masking\_distribution\_comparison.csv}
+\item \texttt{outputs/metrics/week5\_masking\_key\_trace.csv}
+\item \texttt{outputs/metrics/week5\_masking\_summary.json}
+
 \end{itemize}
 
 No large raw generations should be pasted into this report. Include only minimal excerpts with an
