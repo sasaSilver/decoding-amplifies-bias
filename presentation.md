@@ -7,6 +7,7 @@ style: |
   section { font-size: 24px; }
 ---
 
+
 <!-- _class: lead invert -->
 
 # **ExAI as an Audit Layer for Decoding‑Bias Measurement**
